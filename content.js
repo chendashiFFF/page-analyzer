@@ -14,7 +14,7 @@ const formFiller = new (function() {
 
     formElements.forEach((element, index) => {
       const fieldInfo = this.extractFieldInfo(element, index);
-      if (fieldInfo) {
+      if (fieldInfo && fieldInfo.isFillable) {
         fields.push(fieldInfo);
       }
     });
@@ -30,6 +30,7 @@ const formFiller = new (function() {
     const placeholder = element.placeholder || '';
     const required = element.required || false;
     const isVisible = this.isElementVisible(element);
+    const isFillable = this.isElementFillable(element);
 
     return {
       index,
@@ -40,6 +41,7 @@ const formFiller = new (function() {
       placeholder,
       required,
       isVisible,
+      isFillable,
       value: element.value || ''
     };
   };
@@ -200,6 +202,65 @@ const formFiller = new (function() {
     element.dispatchEvent(new Event('change', { bubbles: true }));
   };
 
+  this.isElementFillable = function(element) {
+    // 1. 基础属性检查
+    const fillableTags = ['INPUT', 'TEXTAREA', 'SELECT'];
+    if (!element || !fillableTags.includes(element.tagName)) {
+      return false;
+    }
+
+    // 过滤隐藏字段
+    if (element.tagName === 'INPUT' && element.type === 'hidden') {
+      return false;
+    }
+
+    // 过滤被禁用或只读的字段
+    if (element.disabled || element.readOnly) {
+      return false;
+    }
+
+    // 2. 递归CSS可见性检查
+    let current = element;
+    while (current && current.tagName !== 'BODY') {
+      const style = window.getComputedStyle(current);
+      if (!style) {
+        return false;
+      }
+
+      if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+        return false;
+      }
+
+      current = current.parentElement;
+    }
+
+    // 3. 几何尺寸检查
+    const rect = element.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      // 例外：<select> 元素在某些浏览器和情况下尺寸可能为0但仍然可交互
+      if (element.tagName !== 'SELECT') {
+        return false;
+      }
+    }
+
+    // 4. 启发式过滤规则
+    // 检查名称和ID是否包含常见非用户输入字段的关键词
+    const nameOrId = (element.name || element.id || '').toLowerCase();
+    const honeypotKeywords = ['csrf', 'token', 'honeypot', 'captcha', 'spam', 'bot', 'fake'];
+    if (honeypotKeywords.some(keyword => nameOrId.includes(keyword))) {
+      return false;
+    }
+
+    // 检查autocomplete属性
+    const autocomplete = element.getAttribute('autocomplete');
+    if (autocomplete === 'off' && nameOrId.includes('email') === false) {
+      // email字段即使autocomplete=off也可能是有效的
+      return false;
+    }
+
+    return true;
+  };
+
   this.isElementVisible = function(element) {
     try {
       const style = window.getComputedStyle(element);
@@ -244,167 +305,149 @@ const formFiller = new (function() {
     const field = this.formFields[fieldIndex];
     const element = field.element;
 
-    // 清除之前的高亮
-    this.clearHighlights();
-
-    // 创建主高亮层
-    const highlightId = `form-highlight-${fieldIndex}`;
-    const highlightDiv = document.createElement('div');
-    highlightDiv.id = highlightId;
-
-    // 创建高亮标签
-    const labelDiv = document.createElement('div');
-    labelDiv.className = 'form-highlight-label';
-    labelDiv.textContent = field.label || field.name || '表单字段';
-    labelDiv.style.cssText = `
-      position: absolute;
-      top: -30px;
-      left: 0;
-      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-      color: white;
-      padding: 4px 8px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      z-index: 10000;
-      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
-      white-space: nowrap;
-      max-width: 200px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    `;
-
-    // 创建角标
-    const cornerBadge = document.createElement('div');
-    cornerBadge.className = 'form-highlight-corner';
-    cornerBadge.innerHTML = '●';
-    cornerBadge.style.cssText = `
-      position: absolute;
-      top: -8px;
-      right: -8px;
-      width: 16px;
-      height: 16px;
-      background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 10px;
-      font-weight: bold;
-      z-index: 10001;
-      animation: cornerPulse 1.5s ease-in-out infinite;
-    `;
-
-    // 添加CSS动画
-    if (!document.getElementById('highlight-animations')) {
-      const style = document.createElement('style');
-      style.id = 'highlight-animations';
-      style.textContent = `
-        @keyframes cornerPulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.2); opacity: 0.8; }
-        }
-        @keyframes highlightGlow {
-          0%, 100% {
-            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.4),
-                       0 0 20px rgba(99, 102, 241, 0.2),
-                       0 0 40px rgba(99, 102, 241, 0.1);
-          }
-          50% {
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.6),
-                       0 0 30px rgba(99, 102, 241, 0.3),
-                       0 0 60px rgba(99, 102, 241, 0.15);
-          }
-        }
-        @keyframes highlightBorder {
-          0%, 100% { border-color: #6366f1; }
-          50% { border-color: #8b5cf6; }
-        }
-      `;
-      document.head.appendChild(style);
+    // 如果该字段已经有高亮，先清除
+    if (element.hasAttribute('data-highlighted')) {
+      this.clearFieldHighlight(element);
     }
 
-    // 设置主高亮样式
-    highlightDiv.style.cssText = `
-      position: absolute;
-      border: 3px solid #6366f1;
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.12) 100%);
-      border-radius: 8px;
-      pointer-events: none;
-      z-index: 9999;
-      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-      animation: highlightGlow 2s ease-in-out infinite, highlightBorder 3s ease-in-out infinite;
-      backdrop-filter: blur(2px);
-    `;
-
-    // 计算元素位置
+    // 创建高亮边框
+    const highlightBorder = document.createElement('div');
     const rect = element.getBoundingClientRect();
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+    const scrollX = window.pageXOffset;
+    const scrollY = window.pageYOffset;
 
-    highlightDiv.style.left = `${rect.left + scrollLeft - 3}px`;
-    highlightDiv.style.top = `${rect.top + scrollTop - 3}px`;
-    highlightDiv.style.width = `${rect.width + 6}px`;
-    highlightDiv.style.height = `${rect.height + 6}px`;
+    highlightBorder.style.position = 'absolute';
+    highlightBorder.style.left = (rect.left + scrollX) + 'px';
+    highlightBorder.style.top = (rect.top + scrollY) + 'px';
+    highlightBorder.style.width = rect.width + 'px';
+    highlightBorder.style.height = rect.height + 'px';
+    highlightBorder.style.border = '3px solid #3b82f6';
+    highlightBorder.style.borderRadius = '4px';
+    highlightBorder.style.boxShadow = '0 0 0 1px #3b82f6, 0 0 8px rgba(59, 130, 246, 0.6)';
+    highlightBorder.style.pointerEvents = 'none';
+    highlightBorder.style.zIndex = '999999';
+    highlightBorder.style.transition = 'all 0.3s ease';
 
-    // 添加元素到页面
-    document.body.appendChild(highlightDiv);
-    document.body.appendChild(labelDiv);
-    document.body.appendChild(cornerBadge);
+    // 创建标签
+    const label = document.createElement('div');
+    label.style.position = 'absolute';
+    label.style.left = (rect.left + scrollX) + 'px';
+    label.style.top = (rect.top + scrollY - 30) + 'px';
+    label.style.backgroundColor = '#3b82f6';
+    label.style.color = 'white';
+    label.style.padding = '4px 8px';
+    label.style.borderRadius = '4px';
+    label.style.fontSize = '12px';
+    label.style.fontWeight = 'bold';
+    label.style.zIndex = '1000000';
+    label.style.pointerEvents = 'none';
+    label.textContent = field.label || field.name;
 
-    // 保存引用
+    // 添加到文档
+    document.body.appendChild(highlightBorder);
+    document.body.appendChild(label);
+
+    // 记录高亮元素
+    const highlightId = `highlight-${fieldIndex}-${Date.now()}`;
+    highlightBorder.id = highlightId;
+    label.id = `${highlightId}-label`;
     this.highlightedFields.add(highlightId);
-    this.highlightedFields.add(`${highlightId}-label`);
-    this.highlightedFields.add(`${highlightId}-corner`);
 
-    // 滚动到高亮元素
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // 标记原始元素
+    element.setAttribute('data-highlighted', 'true');
+    element.setAttribute('data-highlight-id', highlightId);
 
-    // 添加元素本身的视觉效果
-    element.style.transition = 'all 0.3s ease';
-    element.style.transform = 'scale(1.02)';
-    element.style.boxShadow = '0 4px 20px rgba(99, 102, 241, 0.3)';
+    // 添加脉冲动画
+    this.addPulseAnimation(highlightBorder);
+
+    // 确保元素在视口中
+    this.scrollToElement(element);
 
     return true;
   };
 
   this.clearHighlights = function() {
     this.highlightedFields.forEach(highlightId => {
-      const element = document.getElementById(highlightId);
-      if (element) {
-        element.remove();
+      // 删除高亮边框
+      const highlightBorder = document.getElementById(highlightId);
+      if (highlightBorder) {
+        highlightBorder.remove();
       }
+
+      // 删除标签
+      const label = document.getElementById(`${highlightId}-label`);
+      if (label) {
+        label.remove();
+      }
+
+      // 清除原始元素的标记
+      const originalElements = document.querySelectorAll(`[data-highlight-id="${highlightId}"]`);
+      originalElements.forEach(element => {
+        element.removeAttribute('data-highlighted');
+        element.removeAttribute('data-highlight-id');
+      });
     });
     this.highlightedFields.clear();
+  };
 
-    // 清除所有表单元素的视觉效果
-    this.formFields.forEach(field => {
-      if (field.element) {
-        field.element.style.transition = '';
-        field.element.style.transform = '';
-        field.element.style.boxShadow = '';
+  this.clearFieldHighlight = function(element) {
+    const highlightId = element.getAttribute('data-highlight-id');
+    if (highlightId) {
+      const highlightBorder = document.getElementById(highlightId);
+      const label = document.getElementById(`${highlightId}-label`);
+
+      if (highlightBorder) {
+        highlightBorder.remove();
       }
-    });
+      if (label) {
+        label.remove();
+      }
+
+      element.removeAttribute('data-highlighted');
+      element.removeAttribute('data-highlight-id');
+      this.highlightedFields.delete(highlightId);
+    }
   };
 
   this.addPulseAnimation = function(element) {
-    let opacity = 0.3;
+    let opacity = 0.6;
     let direction = 1;
+    let animationId;
 
     const pulse = () => {
-      opacity += direction * 0.05;
-      if (opacity >= 0.6) direction = -1;
-      if (opacity <= 0.3) direction = 1;
+      opacity += direction * 0.02;
+      if (opacity >= 0.8) direction = -1;
+      if (opacity <= 0.4) direction = 1;
 
-      element.style.backgroundColor = `rgba(99, 102, 241, ${opacity})`;
+      element.style.boxShadow = `0 0 0 1px #3b82f6, 0 0 ${8 + opacity * 4}px rgba(59, 130, 246, ${opacity})`;
 
       if (this.highlightedFields.has(element.id)) {
-        requestAnimationFrame(pulse);
+        animationId = requestAnimationFrame(pulse);
       }
     };
 
-    requestAnimationFrame(pulse);
+    animationId = requestAnimationFrame(pulse);
+
+    // 存储动画ID以便清理
+    element.setAttribute('data-animation-id', animationId);
+  };
+
+  this.scrollToElement = function(element) {
+    const rect = element.getBoundingClientRect();
+    const isInViewport = (
+      rect.top >= 0 &&
+      rect.left >= 0 &&
+      rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+      rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+    );
+
+    if (!isInViewport) {
+      element.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'center'
+      });
+    }
   };
 })();
 
