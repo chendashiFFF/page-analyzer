@@ -135,6 +135,39 @@
     .config-info { background: rgba(148,163,184,.12); padding: 12px; border-radius: 12px; font-size: 13px; }
     .config-info h4 { margin: 0 0 6px 0; font-size: 13px; color: var(--muted); }
     .config-status { min-height: 24px; }
+
+    /* 主题覆盖样式 */
+    .theme-light {
+      --bg: #f6f7f9;
+      --card: #ffffff;
+      --surface: #f3f4f6;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --primary: #6366f1;
+      --primary-600: #5458ee;
+      --primary-50: #eef2ff;
+      --success-bg: #e8f7ee;
+      --success-fg: #166534;
+      --error-bg: #fde8e8;
+      --error-fg: #991b1b;
+    }
+
+    .theme-dark {
+      --bg: #0b1020;
+      --card: #0f172a;
+      --surface: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --border: #1f2937;
+      --primary: #8b93ff;
+      --primary-600: #7780ff;
+      --primary-50: #121635;
+      --success-bg: #073b1a;
+      --success-fg: #a7f3d0;
+      --error-bg: #3f1010;
+      --error-fg: #fecaca;
+    }
   </style>
 </head>
 <body>
@@ -229,6 +262,18 @@
 
           <div class="config-status">
             <div class="status hidden" id="configStatus"></div>
+          </div>
+        </div>
+
+        <div class="config-section">
+          <div class="form-group">
+            <label for="themeSelect">主题模式</label>
+            <select id="themeSelect">
+              <option value="system">跟随系统</option>
+              <option value="light">浅色主题</option>
+              <option value="dark">深色主题</option>
+            </select>
+            <div class="help-text">选择界面主题模式</div>
           </div>
         </div>
 

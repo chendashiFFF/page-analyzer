@@ -7,7 +7,9 @@
       "Bash(start:*)",
       "Bash(del:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git restore:*)",
+      "Bash(where:*)"
     ],
     "deny": [],
     "ask": []

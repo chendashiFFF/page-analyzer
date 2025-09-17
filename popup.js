@@ -7,6 +7,11 @@ document.addEventListener('DOMContentLoaded', function () {
     config: document.getElementById('configTab')
   };
 
+  // 当popup关闭时清除高亮
+  window.addEventListener('beforeunload', function() {
+    clearFieldHighlights();
+  });
+
   const contents = {
     form: document.getElementById('formContent'),
     analyze: document.getElementById('analyzeContent'),
@@ -37,7 +42,8 @@ document.addEventListener('DOMContentLoaded', function () {
     apiKeyInput: document.getElementById('apiKeyInput'),
     modelNameInput: document.getElementById('modelNameInput'),
     maxTokensInput: document.getElementById('maxTokensInput'),
-    temperatureInput: document.getElementById('temperatureInput')
+    temperatureInput: document.getElementById('temperatureInput'),
+    themeSelect: document.getElementById('themeSelect')
   };
 
   const historyManager = typeof HistoryManager !== 'undefined' ? new HistoryManager() : null;
@@ -112,32 +118,106 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function displayFormResults(fields) {
     elements.formResults.classList.remove('hidden');
+
+    // 过滤出可见的字段
+    const visibleFields = fields.filter(field => field.isVisible);
+    const hiddenFields = fields.filter(field => !field.isVisible);
+
     elements.formResults.innerHTML = `
-      <div style="margin-bottom: 8px;"><strong>检测到 ${fields.length} 个表单字段</strong></div>
-      ${fields.map((field, index) => `
-        <div style="margin: 4px 0; padding: 8px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef;">
+      <div style="margin-bottom: 8px;"><strong>检测到 ${visibleFields.length} 个可见表单字段</strong>
+        ${hiddenFields.length > 0 ? `<span style="color: var(--muted); font-size: 12px;">(过滤了 ${hiddenFields.length} 个隐藏字段)</span>` : ''}
+      </div>
+      ${visibleFields.map((field, index) => {
+        // 获取在原数组中的真实索引
+        const originalIndex = fields.indexOf(field);
+        return `
+        <div class="field-item" data-field-index="${originalIndex}" style="margin: 4px 0; padding: 8px; background: var(--surface); border-radius: 6px; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s ease;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
             <div>
-              <strong>${field.label}</strong> (${field.type})
-              ${field.required ? '<span style="color: red;">*</span>' : ''}
+              <strong style="color: var(--text);">${field.label}</strong> <span style="color: var(--muted);">(${field.type})</span>
+              ${field.required ? '<span style="color: #ef4444;">*</span>' : ''}
             </div>
-            <button class="field-fill-btn" data-field-index="${index}" style="padding: 4px 8px; font-size: 12px; background: #6366f1; color: white; border: none; border-radius: 4px; cursor: pointer;">
-              单独填充
+            <button class="field-fill-btn" data-field-index="${originalIndex}" style="padding: 4px 8px; font-size: 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer;">
+              填充
             </button>
           </div>
-          ${field.placeholder ? `<div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">提示: ${field.placeholder}</div>` : ''}
-          <div class="field-result" data-field-index="${index}" style="display: none; margin-top: 4px; padding: 4px; background: #e8f5e8; border-radius: 3px; font-size: 12px;"></div>
+          ${field.placeholder ? `<div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">提示: ${field.placeholder}</div>` : ''}
+          <div class="field-result" data-field-index="${originalIndex}" style="display: none; margin-top: 4px; padding: 4px; background: var(--success-bg); border-radius: 3px; font-size: 12px; color: var(--success-fg);"></div>
         </div>
-      `).join('')}
+      `;
+      }).join('')}
+      ${hiddenFields.length > 0 ? `
+        <details style="margin-top: 12px;">
+          <summary style="cursor: pointer; font-size: 12px; color: var(--muted);">查看隐藏字段 (${hiddenFields.length})</summary>
+          <div style="margin-top: 8px; padding: 8px; background: var(--surface); border-radius: 6px; border: 1px solid var(--border);">
+            ${hiddenFields.map((field, index) => {
+              const originalIndex = fields.indexOf(field);
+              return `
+              <div class="field-item" data-field-index="${originalIndex}" style="margin: 4px 0; padding: 6px; background: var(--surface); border-radius: 4px; opacity: 0.7; cursor: pointer; transition: all 0.2s ease;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <strong style="color: var(--text);">${field.label}</strong> <span style="color: var(--muted);">(${field.type})</span>
+                    ${field.required ? '<span style="color: #ef4444;">*</span>' : ''}
+                    <span style="color: var(--muted); font-size: 11px;">(隐藏)</span>
+                  </div>
+                  <button class="field-fill-btn" data-field-index="${originalIndex}" style="padding: 3px 6px; font-size: 11px; background: var(--primary); color: white; border: none; border-radius: 3px; cursor: pointer;">
+                    填充
+                  </button>
+                </div>
+                ${field.placeholder ? `<div style="font-size: 11px; color: var(--muted);">提示: ${field.placeholder}</div>` : ''}
+              </div>
+            `;
+            }).join('')}
+          </div>
+        </details>
+      ` : ''}
     `;
 
-    // 为每个单独填充按钮添加事件监听
+    // 为字段项添加悬停高亮事件
+    document.querySelectorAll('.field-item').forEach(item => {
+      item.addEventListener('mouseenter', function() {
+        const fieldIndex = parseInt(this.dataset.fieldIndex);
+        this.style.background = 'var(--primary-50)';
+        this.style.borderColor = 'var(--primary)';
+        this.style.transform = 'translateY(-1px)';
+        highlightField(fieldIndex);
+      });
+
+      item.addEventListener('mouseleave', function() {
+        this.style.background = 'var(--surface)';
+        this.style.borderColor = 'var(--border)';
+        this.style.transform = 'translateY(0)';
+        clearFieldHighlights();
+      });
+    });
+
+    // 为每个单独填充按钮添加事件监听（阻止事件冒泡）
     document.querySelectorAll('.field-fill-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation(); // 阻止事件冒泡
         const fieldIndex = parseInt(this.dataset.fieldIndex);
         fillSingleField(fieldIndex);
       });
     });
+  }
+
+  async function highlightField(fieldIndex) {
+    if (fieldIndex < 0 || fieldIndex >= detectedFields.length) {
+      return; // 静默失败，不影响用户体验
+    }
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        action: 'highlightField',
+        fieldIndex: fieldIndex
+      });
+
+      // 高亮不需要显示成功/失败信息，静默处理即可
+    } catch (error) {
+      // 静默处理错误，不影响用户体验
+      console.warn('Highlight field failed:', error);
+    }
   }
 
   async function fillSingleField(fieldIndex) {
@@ -375,6 +455,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // 配置功能
   elements.aiProviderSelect.addEventListener('change', onProviderChange);
+  elements.themeSelect.addEventListener('change', onThemeChange);
   buttons.saveConfig.addEventListener('click', saveConfiguration);
   buttons.testConnection.addEventListener('click', testConnection);
   buttons.clearConfig.addEventListener('click', clearConfiguration);
@@ -395,6 +476,12 @@ document.addEventListener('DOMContentLoaded', function () {
         elements.maxTokensInput.value = config.maxTokens || 1000;
         elements.temperatureInput.value = config.temperature || 0.7;
       }
+
+      // 加载主题设置
+      const themeResult = await chrome.storage.sync.get('theme');
+      const theme = themeResult.theme || 'system';
+      elements.themeSelect.value = theme;
+      applyTheme(theme);
     } catch (error) {
       console.error('加载配置失败:', error);
     }
@@ -489,6 +576,41 @@ document.addEventListener('DOMContentLoaded', function () {
         elements.apiEndpointInput.value = 'https://api.anthropic.com/v1/messages';
         elements.modelNameInput.value = 'claude-3-haiku-20240307';
         break;
+    }
+  }
+
+  async function onThemeChange() {
+    const theme = elements.themeSelect.value;
+    try {
+      await chrome.storage.sync.set({ theme });
+      applyTheme(theme);
+      showSuccess(elements.configStatus, '主题已更新');
+    } catch (error) {
+      showError(elements.configStatus, '主题更新失败: ' + error.message);
+    }
+  }
+
+  function applyTheme(theme) {
+    const root = document.documentElement;
+
+    // 移除所有主题类
+    root.classList.remove('theme-light', 'theme-dark', 'theme-system');
+
+    // 移除所有主题相关的样式
+    root.style.removeProperty('--theme-override');
+
+    if (theme === 'light') {
+      // 强制浅色主题
+      root.style.setProperty('--theme-override', 'light');
+      root.classList.add('theme-light');
+    } else if (theme === 'dark') {
+      // 强制深色主题
+      root.style.setProperty('--theme-override', 'dark');
+      root.classList.add('theme-dark');
+    } else {
+      // 跟随系统
+      root.classList.add('theme-system');
+      root.style.removeProperty('--theme-override');
     }
   }
 
@@ -609,6 +731,16 @@ document.addEventListener('DOMContentLoaded', function () {
       } catch (injectError) {
         throw new Error('无法在当前页面注入脚本，请刷新页面后重试');
       }
+    }
+  }
+
+  // 清除高亮的辅助函数
+  async function clearFieldHighlights() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      await chrome.tabs.sendMessage(tab.id, { action: 'clearHighlights' });
+    } catch (error) {
+      // 忽略清除高亮时的错误
     }
   }
 

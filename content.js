@@ -3,8 +3,12 @@
 const formFiller = new (function() {
   // AI Form Filler Module 内联版本
   this.formFields = [];
+  this.highlightedFields = new Set();
 
   this.detectFormFields = function() {
+    // 清除之前的高亮
+    this.clearHighlights();
+
     const fields = [];
     const formElements = document.querySelectorAll('input, textarea, select');
 
@@ -25,6 +29,7 @@ const formFiller = new (function() {
     const label = this.getFieldLabel(element);
     const placeholder = element.placeholder || '';
     const required = element.required || false;
+    const isVisible = this.isElementVisible(element);
 
     return {
       index,
@@ -34,6 +39,7 @@ const formFiller = new (function() {
       label,
       placeholder,
       required,
+      isVisible,
       value: element.value || ''
     };
   };
@@ -192,6 +198,213 @@ const formFiller = new (function() {
 
     element.dispatchEvent(new Event('input', { bubbles: true }));
     element.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  this.isElementVisible = function(element) {
+    try {
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+
+      // 只检查明确的隐藏属性
+      if (style.display === 'none' || style.visibility === 'hidden') {
+        return false;
+      }
+
+      // 只在完全透明时隐藏
+      if (parseFloat(style.opacity) === 0) {
+        return false;
+      }
+
+      // 如果元素有实际位置和尺寸，通常就是可见的
+      if (rect.width > 0 && rect.height > 0) {
+        return true;
+      }
+
+      // 特殊处理：某些表单元素可能是inline或通过CSS设置尺寸
+      const tagName = element.tagName.toLowerCase();
+      if (['input', 'select', 'textarea', 'button'].includes(tagName)) {
+        // 表单元素，只要有合理的样式属性就认为可见
+        if (element.type !== 'hidden' && !element.hasAttribute('hidden')) {
+          return true;
+        }
+      }
+
+      // 默认认为可见，避免误判
+      return true;
+    } catch (error) {
+      return true;
+    }
+  };
+
+  this.highlightFormField = function(fieldIndex) {
+    if (fieldIndex < 0 || fieldIndex >= this.formFields.length) {
+      return false;
+    }
+
+    const field = this.formFields[fieldIndex];
+    const element = field.element;
+
+    // 清除之前的高亮
+    this.clearHighlights();
+
+    // 创建主高亮层
+    const highlightId = `form-highlight-${fieldIndex}`;
+    const highlightDiv = document.createElement('div');
+    highlightDiv.id = highlightId;
+
+    // 创建高亮标签
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'form-highlight-label';
+    labelDiv.textContent = field.label || field.name || '表单字段';
+    labelDiv.style.cssText = `
+      position: absolute;
+      top: -30px;
+      left: 0;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      color: white;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 10000;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+      white-space: nowrap;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    `;
+
+    // 创建角标
+    const cornerBadge = document.createElement('div');
+    cornerBadge.className = 'form-highlight-corner';
+    cornerBadge.innerHTML = '●';
+    cornerBadge.style.cssText = `
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      width: 16px;
+      height: 16px;
+      background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 10px;
+      font-weight: bold;
+      z-index: 10001;
+      animation: cornerPulse 1.5s ease-in-out infinite;
+    `;
+
+    // 添加CSS动画
+    if (!document.getElementById('highlight-animations')) {
+      const style = document.createElement('style');
+      style.id = 'highlight-animations';
+      style.textContent = `
+        @keyframes cornerPulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.2); opacity: 0.8; }
+        }
+        @keyframes highlightGlow {
+          0%, 100% {
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.4),
+                       0 0 20px rgba(99, 102, 241, 0.2),
+                       0 0 40px rgba(99, 102, 241, 0.1);
+          }
+          50% {
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.6),
+                       0 0 30px rgba(99, 102, 241, 0.3),
+                       0 0 60px rgba(99, 102, 241, 0.15);
+          }
+        }
+        @keyframes highlightBorder {
+          0%, 100% { border-color: #6366f1; }
+          50% { border-color: #8b5cf6; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // 设置主高亮样式
+    highlightDiv.style.cssText = `
+      position: absolute;
+      border: 3px solid #6366f1;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.12) 100%);
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 9999;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      animation: highlightGlow 2s ease-in-out infinite, highlightBorder 3s ease-in-out infinite;
+      backdrop-filter: blur(2px);
+    `;
+
+    // 计算元素位置
+    const rect = element.getBoundingClientRect();
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+
+    highlightDiv.style.left = `${rect.left + scrollLeft - 3}px`;
+    highlightDiv.style.top = `${rect.top + scrollTop - 3}px`;
+    highlightDiv.style.width = `${rect.width + 6}px`;
+    highlightDiv.style.height = `${rect.height + 6}px`;
+
+    // 添加元素到页面
+    document.body.appendChild(highlightDiv);
+    document.body.appendChild(labelDiv);
+    document.body.appendChild(cornerBadge);
+
+    // 保存引用
+    this.highlightedFields.add(highlightId);
+    this.highlightedFields.add(`${highlightId}-label`);
+    this.highlightedFields.add(`${highlightId}-corner`);
+
+    // 滚动到高亮元素
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // 添加元素本身的视觉效果
+    element.style.transition = 'all 0.3s ease';
+    element.style.transform = 'scale(1.02)';
+    element.style.boxShadow = '0 4px 20px rgba(99, 102, 241, 0.3)';
+
+    return true;
+  };
+
+  this.clearHighlights = function() {
+    this.highlightedFields.forEach(highlightId => {
+      const element = document.getElementById(highlightId);
+      if (element) {
+        element.remove();
+      }
+    });
+    this.highlightedFields.clear();
+
+    // 清除所有表单元素的视觉效果
+    this.formFields.forEach(field => {
+      if (field.element) {
+        field.element.style.transition = '';
+        field.element.style.transform = '';
+        field.element.style.boxShadow = '';
+      }
+    });
+  };
+
+  this.addPulseAnimation = function(element) {
+    let opacity = 0.3;
+    let direction = 1;
+
+    const pulse = () => {
+      opacity += direction * 0.05;
+      if (opacity >= 0.6) direction = -1;
+      if (opacity <= 0.3) direction = 1;
+
+      element.style.backgroundColor = `rgba(99, 102, 241, ${opacity})`;
+
+      if (this.highlightedFields.has(element.id)) {
+        requestAnimationFrame(pulse);
+      }
+    };
+
+    requestAnimationFrame(pulse);
   };
 })();
 
@@ -376,6 +589,8 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     }
 
     else if (request.action === 'fillForm') {
+      // 填充前清除高亮
+      formFiller.clearHighlights();
       formFiller.fillFormWithAI()
         .then(data => sendResponse({success: true, data: data}))
         .catch(error => sendResponse({success: false, error: error.message}));
@@ -383,10 +598,22 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     }
 
     else if (request.action === 'fillSingleField') {
+      // 填充前清除高亮
+      formFiller.clearHighlights();
       formFiller.fillSingleFieldWithAI(request.fieldIndex)
         .then(data => sendResponse({success: true, data: data}))
         .catch(error => sendResponse({success: false, error: error.message}));
       return true;
+    }
+
+    else if (request.action === 'highlightField') {
+      const success = formFiller.highlightFormField(request.fieldIndex);
+      sendResponse({success: success, data: success ? '字段已高亮' : '高亮失败'});
+    }
+
+    else if (request.action === 'clearHighlights') {
+      formFiller.clearHighlights();
+      sendResponse({success: true, data: '高亮已清除'});
     }
 
     else if (request.action === 'analyzePage') {
