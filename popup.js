@@ -61,16 +61,28 @@ document.addEventListener('DOMContentLoaded', function () {
     showLoading(elements.formResults, '检测表单字段...');
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      await ensureContentScript(tab.id);
+
       const response = await chrome.tabs.sendMessage(tab.id, { action: 'detectForms' });
       if (response?.success) {
         detectedFields = response.data || [];
         displayFormResults(detectedFields);
         buttons.fill.disabled = detectedFields.length === 0;
+
+        // 如果没有找到表单字段，显示友好的提示
+        if (detectedFields.length === 0) {
+          showSuccess(elements.formResults, '当前页面未检测到表单字段');
+        }
       } else {
         showError(elements.formResults, response?.error || '检测失败');
       }
     } catch (error) {
-      showError(elements.formResults, '连接失败: ' + error.message);
+      // 如果是连接错误且是Chrome页面，显示特殊提示
+      if (error.message.includes('Could not establish connection') || error.message.includes('Receiving end does not exist')) {
+        showError(elements.formResults, '无法检测表单字段，请刷新页面后重试');
+      } else {
+        showError(elements.formResults, '检测失败: ' + error.message);
+      }
     }
   }
 
@@ -89,7 +101,12 @@ document.addEventListener('DOMContentLoaded', function () {
         showError(elements.formResults, response?.error || '填充失败');
       }
     } catch (error) {
-      showError(elements.formResults, '填充失败: ' + error.message);
+      // 如果是连接错误，显示友好的提示
+      if (error.message.includes('Could not establish connection') || error.message.includes('Receiving end does not exist')) {
+        showError(elements.formResults, '无法填充表单，请刷新页面后重试');
+      } else {
+        showError(elements.formResults, '填充失败: ' + error.message);
+      }
     }
   }
 
@@ -133,7 +150,12 @@ document.addEventListener('DOMContentLoaded', function () {
         showError(elements.analyzeResults, response?.error || '分析失败');
       }
     } catch (error) {
-      showError(elements.analyzeResults, '分析失败: ' + error.message);
+      // 如果是连接错误，显示友好的提示
+      if (error.message.includes('Could not establish connection') || error.message.includes('Receiving end does not exist')) {
+        showError(elements.analyzeResults, '无法分析页面，请刷新页面后重试');
+      } else {
+        showError(elements.analyzeResults, '分析失败: ' + error.message);
+      }
     }
   }
 
@@ -194,7 +216,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
       await renderHistoryList(savedEntry?.id || null);
     } catch (error) {
-      showError(elements.analyzeResults, 'AI 分析失败: ' + error.message);
+      // 如果是连接错误，显示友好的提示
+      if (error.message.includes('Could not establish connection') || error.message.includes('Receiving end does not exist')) {
+        showError(elements.analyzeResults, '无法进行AI分析，请刷新页面后重试');
+      } else {
+        showError(elements.analyzeResults, 'AI 分析失败: ' + error.message);
+      }
     }
   }
 
