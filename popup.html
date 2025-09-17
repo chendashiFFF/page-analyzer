@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --card: #ffffff;
+      --surface: #f3f4f6;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --primary: #6366f1;
+      --primary-600: #5458ee;
+      --primary-50: #eef2ff;
+      --success-bg: #e8f7ee;
+      --success-fg: #166534;
+      --error-bg: #fde8e8;
+      --error-fg: #991b1b;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1020;
+        --card: #0f172a;
+        --surface: #111827;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --border: #1f2937;
+        --primary: #8b93ff;
+        --primary-600: #7780ff;
+        --primary-50: #121635;
+        --success-bg: #073b1a;
+        --success-fg: #a7f3d0;
+        --error-bg: #3f1010;
+        --error-fg: #fecaca;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      width: 380px;
+      min-height: 420px;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: 0.2px; }
+    .container { padding: 12px 12px 16px; }
+
+    .tabs {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 0 12px 12px;
+    }
+    .tab {
+      padding: 10px 8px; border: 1px solid var(--border); background: var(--card); color: var(--muted);
+      border-radius: 10px; cursor: pointer; font-size: 13px; transition: all .18s ease;
+    }
+    .tab:hover { color: var(--text); border-color: #d1d5db; }
+    .tab.active { color: var(--primary); border-color: var(--primary); box-shadow: 0 1px 0 0 rgba(99,102,241,.2) inset, 0 0 0 3px var(--primary-50); }
+
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .btn { width: 100%; padding: 10px 12px; margin: 8px 0; border: 1px solid transparent; border-radius: 10px; background: var(--card); color: var(--text); cursor: pointer; font-size: 14px; transition: all .18s ease; }
+    .btn:hover { border-color: var(--border); }
+    .btn:focus { outline: none; box-shadow: 0 0 0 3px var(--primary-50); }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-600); }
+    .btn-secondary { background: #6b7280; color: #fff; }
+    .btn-secondary:hover { background: #5b616e; }
+
+    .results { margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px; background: rgba(99,102,241,0.04); max-height: 220px; overflow-y: auto; font-size: 13px; line-height: 1.5; }
+    .analysis-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; color: var(--text); white-space: pre-wrap; }
+
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; }
+    .form-group select, .form-group input, .form-group textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--card); color: var(--text); }
+    .form-group textarea { resize: vertical; min-height: 60px; }
+
+    .status { padding: 8px 12px; margin: 8px 0; border-radius: 10px; font-size: 13px; }
+    .status.success { background: var(--success-bg); color: var(--success-fg); border: 1px solid rgba(16,185,129,.2); }
+    .status.error { background: var(--error-bg); color: var(--error-fg); border: 1px solid rgba(239,68,68,.25); }
+    .status.warning { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+
+    .analysis-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .analysis-subtext { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .analysis-actions { margin-top: 10px; display: flex; gap: 8px; }
+
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .badge-info { background: rgba(99,102,241,0.15); color: var(--primary); }
+    .badge-warn { background: rgba(249,115,22,0.18); color: #c2410c; }
+    .badge-refresh { background: rgba(34,197,94,0.15); color: #15803d; }
+
+    .history-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .history-header strong { font-size: 13px; }
+    .history-actions { display: flex; gap: 8px; align-items: center; }
+    .history-count { font-size: 12px; color: var(--muted); }
+    .history-list { max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .history-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; transition: border-color .18s ease, transform .18s ease; }
+    .history-item:hover { border-color: var(--primary); transform: translateY(-1px); }
+    .history-item.active { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-50); }
+    .history-item-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text); }
+    .history-item-meta { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .history-item-preview { font-size: 12px; color: var(--muted); line-height: 1.4; }
+    .history-empty { font-size: 12px; color: var(--muted); padding: 12px; border: 1px dashed var(--border); border-radius: 10px; text-align: center; }
+
+    .link-btn { border: none; background: none; color: var(--primary); font-size: 12px; cursor: pointer; padding: 0; }
+    .link-btn:hover { text-decoration: underline; }
+
+    .loading { display: inline-block; width: 16px; height: 16px; border: 2px solid #e5e7eb; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display: none; }
+
+    /* 配置页面 */
+    .config-form { background: rgba(148,163,184,.08); padding: 12px; border-radius: 12px; margin-bottom: 12px; }
+    .config-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+    .required { color: #ef4444; font-weight: 700; }
+    .help-text { color: var(--muted); font-size: 12px; display: block; margin-top: 4px; }
+    .config-info { background: rgba(148,163,184,.12); padding: 12px; border-radius: 12px; font-size: 13px; }
+    .config-info h4 { margin: 0 0 6px 0; font-size: 13px; color: var(--muted); }
+    .config-status { min-height: 24px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>AI 助手</h1>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" id="formTab">表单填充</button>
+    <button class="tab" id="analyzeTab">内容分析</button>
+    <button class="tab" id="configTab">配置</button>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <!-- 表单填充标签 -->
+      <div class="tab-content active" id="formContent">
+        <button class="btn btn-primary" id="detectBtn">检测表单字段</button>
+        <button class="btn" id="fillBtn" disabled>AI 智能填充</button>
+        <div class="results hidden" id="formResults"></div>
+      </div>
+
+      <!-- 内容分析标签 -->
+      <div class="tab-content" id="analyzeContent">
+        <button class="btn" id="analyzePageBtn">分析页面基本信息</button>
+        <button class="btn btn-primary" id="analyzeAIBtn">AI 内容分析</button>
+        <button class="btn" id="refreshCacheBtn">强制刷新分析缓存</button>
+        <div class="results hidden" id="analyzeResults"></div>
+        <div class="history-section" id="historySection">
+          <div class="history-header">
+            <strong>分析历史</strong>
+            <div class="history-actions">
+              <span class="history-count" id="historyCount"></span>
+              <button class="link-btn" id="clearHistoryBtn">清空历史</button>
+            </div>
+          </div>
+          <div class="history-empty hidden" id="historyEmpty">暂无分析记录</div>
+          <div class="history-list hidden" id="historyList"></div>
+        </div>
+      </div>
+
+      <!-- 配置标签 -->
+      <div class="tab-content" id="configContent">
+        <div class="config-section">
+          <div class="form-group">
+            <label for="aiProviderSelect">选择 AI 提供商类型</label>
+            <select id="aiProviderSelect">
+              <option value="openai">OpenAI 兼容（OpenAI、Groq、Moonshot、Ollama 等）</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="anthropic">Anthropic Claude</option>
+            </select>
+            <div class="help-text">OpenAI 兼容模式支持多数主流服务。</div>
+          </div>
+
+          <div class="config-form">
+            <div class="form-group">
+              <label for="apiEndpointInput">API 地址 <span class="required">*</span></label>
+              <input type="url" id="apiEndpointInput" placeholder="例如: https://api.openai.com/v1/chat/completions" required>
+              <span class="help-text">不同服务商的 API 地址不同，请按需填写。</span>
+            </div>
+
+            <div class="form-group">
+              <label for="apiKeyInput">API 密钥 <span class="required">*</span></label>
+              <input type="text" id="apiKeyInput" placeholder="输入你的 API Key" required>
+              <span class="help-text">从服务商控制台获取密钥。</span>
+            </div>
+
+            <div class="form-group">
+              <label for="modelNameInput">模型名称 <span class="required">*</span></label>
+              <input type="text" id="modelNameInput" placeholder="例如: gpt-4o, gemini-1.5-pro-latest" required>
+              <span class="help-text">填写具体使用的模型。</span>
+            </div>
+
+            <div class="form-group">
+              <label for="maxTokensInput">最大 Token 数</label>
+              <input type="number" id="maxTokensInput" placeholder="1000" min="100" max="4000" value="1000">
+              <span class="help-text">控制回复长度，建议 100-4000。</span>
+            </div>
+
+            <div class="form-group">
+              <label for="temperatureInput">Temperature</label>
+              <input type="number" id="temperatureInput" placeholder="0.7" min="0" max="2" step="0.1" value="0.7">
+              <span class="help-text">控制随机性，范围 0-2，建议 0.7。</span>
+            </div>
+          </div>
+
+          <div class="config-actions">
+            <button class="btn btn-primary" id="saveConfigBtn">保存配置</button>
+            <button class="btn btn-secondary" id="testConnectionBtn">测试连接</button>
+            <button class="btn btn-secondary" id="clearConfigBtn">清除配置</button>
+          </div>
+
+          <div class="config-status">
+            <div class="status hidden" id="configStatus"></div>
+          </div>
+        </div>
+
+        <div class="config-info">
+          <h4>常用服务商配置示例</h4>
+          <div class="provider-details">
+            <strong>OpenAI:</strong> https://api.openai.com/v1/chat/completions | gpt-4o<br>
+            <strong>Groq:</strong> https://api.groq.com/openai/v1/chat/completions | llama3-70b-8192<br>
+            <strong>Moonshot:</strong> https://api.moonshot.cn/v1/chat/completions | moonshot-v1-8k<br>
+            <strong>Ollama (本地):</strong> http://localhost:11434/v1/chat/completions | llama3<br>
+            <strong>Gemini:</strong> https://generativelanguage.googleapis.com | gemini-1.5-pro-latest<br>
+            <strong>Claude:</strong> https://api.anthropic.com/v1/messages | claude-3-sonnet-20240229<br>
+            <strong>智谱AI:</strong> https://open.bigmodel.cn/api/paas/v4/chat/completions | glm-4-air, glm-4-0520, glm-4
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="modules/history-manager.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
