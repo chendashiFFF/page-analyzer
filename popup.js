@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const historyManager = typeof HistoryManager !== 'undefined' ? new HistoryManager() : null;
   let detectedFields = [];
   let historyCache = [];
+  let isFillingForm = false; // 防止重复点击
 
   // 标签切换
   Object.keys(tabs).forEach(key => tabs[key].addEventListener('click', () => switchTab(key)));
@@ -97,6 +98,16 @@ document.addEventListener('DOMContentLoaded', function () {
       showError(elements.formResults, '请先检测表单字段');
       return;
     }
+
+    // 防止重复点击
+    if (isFillingForm) {
+      return;
+    }
+
+    isFillingForm = true;
+    buttons.fill.disabled = true;
+    buttons.fill.textContent = '填充中...';
+
     showLoading(elements.formResults, 'AI 正在生成数据...');
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -113,6 +124,10 @@ document.addEventListener('DOMContentLoaded', function () {
       } else {
         showError(elements.formResults, '填充失败: ' + error.message);
       }
+    } finally {
+      isFillingForm = false;
+      buttons.fill.disabled = false;
+      buttons.fill.textContent = 'AI 智能填充';
     }
   }
 
@@ -229,6 +244,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const field = detectedFields[fieldIndex];
     const resultDiv = document.querySelector(`.field-result[data-field-index="${fieldIndex}"]`);
     const btn = document.querySelector(`.field-fill-btn[data-field-index="${fieldIndex}"]`);
+
+    // 防止重复点击
+    if (btn.disabled) {
+      return;
+    }
 
     // 显示加载状态
     if (resultDiv) {
