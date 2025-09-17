@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const tabs = {
     form: document.getElementById('formTab'),
     analyze: document.getElementById('analyzeTab'),
+    error: document.getElementById('errorTab'),
     config: document.getElementById('configTab')
   };
 
@@ -15,6 +16,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const contents = {
     form: document.getElementById('formContent'),
     analyze: document.getElementById('analyzeContent'),
+    error: document.getElementById('errorContent'),
     config: document.getElementById('configContent')
   };
 
@@ -24,6 +26,10 @@ document.addEventListener('DOMContentLoaded', function () {
     analyzePage: document.getElementById('analyzePageBtn'),
     analyzeAI: document.getElementById('analyzeAIBtn'),
     refreshCache: document.getElementById('refreshCacheBtn'),
+    getErrorList: document.getElementById('getErrorListBtn'),
+    clearErrors: document.getElementById('clearErrorsBtn'),
+    toggleErrorMonitor: document.getElementById('toggleErrorMonitorBtn'),
+    clearErrorHistory: document.getElementById('clearErrorHistoryBtn'),
     saveConfig: document.getElementById('saveConfigBtn'),
     testConnection: document.getElementById('testConnectionBtn'),
     clearConfig: document.getElementById('clearConfigBtn'),
@@ -33,9 +39,13 @@ document.addEventListener('DOMContentLoaded', function () {
   const elements = {
     formResults: document.getElementById('formResults'),
     analyzeResults: document.getElementById('analyzeResults'),
+    errorResults: document.getElementById('errorResults'),
     historyList: document.getElementById('historyList'),
     historyEmpty: document.getElementById('historyEmpty'),
     historyCount: document.getElementById('historyCount'),
+    errorList: document.getElementById('errorList'),
+    errorEmpty: document.getElementById('errorEmpty'),
+    errorCount: document.getElementById('errorCount'),
     configStatus: document.getElementById('configStatus'),
     aiProviderSelect: document.getElementById('aiProviderSelect'),
     apiEndpointInput: document.getElementById('apiEndpointInput'),
@@ -49,7 +59,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const historyManager = typeof HistoryManager !== 'undefined' ? new HistoryManager() : null;
   let detectedFields = [];
   let historyCache = [];
+  let errorCache = [];
   let isFillingForm = false; // 防止重复点击
+  let isErrorMonitorEnabled = true; // 错误监控状态
 
   // 标签切换
   Object.keys(tabs).forEach(key => tabs[key].addEventListener('click', () => switchTab(key)));
@@ -310,6 +322,12 @@ document.addEventListener('DOMContentLoaded', function () {
   buttons.analyzeAI.addEventListener('click', () => analyzeWithAI(false));
   buttons.refreshCache.addEventListener('click', () => analyzeWithAI(true));
 
+  // 错误监控功能
+  buttons.getErrorList.addEventListener('click', getErrorList);
+  buttons.clearErrors.addEventListener('click', clearErrors);
+  buttons.toggleErrorMonitor.addEventListener('click', toggleErrorMonitor);
+  buttons.clearErrorHistory.addEventListener('click', clearErrorHistory);
+
   // 历史记录交互
   if (buttons.clearHistory) {
     buttons.clearHistory.addEventListener('click', clearHistory);
@@ -473,6 +491,229 @@ document.addEventListener('DOMContentLoaded', function () {
     setActiveHistoryItem(entry.id);
   }
 
+  // 错误监控功能
+  async function getErrorList() {
+    showLoading(elements.errorResults, '获取错误列表...');
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      await ensureContentScript(tab.id);
+
+      const response = await chrome.tabs.sendMessage(tab.id, { action: 'getErrorList' });
+      if (response?.success) {
+        displayErrorList(response.data);
+      } else {
+        showError(elements.errorResults, response?.error || '获取错误列表失败');
+      }
+    } catch (error) {
+      showError(elements.errorResults, '获取错误列表失败: ' + error.message);
+    }
+  }
+
+  async function clearErrors() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      await ensureContentScript(tab.id);
+
+      const response = await chrome.tabs.sendMessage(tab.id, { action: 'clearErrors' });
+      if (response?.success) {
+        showSuccess(elements.errorResults, '错误已清除');
+        elements.errorResults.innerHTML = '';
+      } else {
+        showError(elements.errorResults, response?.error || '清除错误失败');
+      }
+    } catch (error) {
+      showError(elements.errorResults, '清除错误失败: ' + error.message);
+    }
+  }
+
+  async function toggleErrorMonitor() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      await ensureContentScript(tab.id);
+
+      isErrorMonitorEnabled = !isErrorMonitorEnabled;
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        action: 'toggleErrorMonitor',
+        enabled: isErrorMonitorEnabled
+      });
+
+      if (response?.success) {
+        buttons.toggleErrorMonitor.textContent = isErrorMonitorEnabled ? '禁用错误监控' : '启用错误监控';
+        buttons.toggleErrorMonitor.className = isErrorMonitorEnabled ? 'btn btn-secondary' : 'btn btn-primary';
+        showSuccess(elements.errorResults, response.data);
+      } else {
+        showError(elements.errorResults, response?.error || '切换错误监控状态失败');
+      }
+    } catch (error) {
+      showError(elements.errorResults, '切换错误监控状态失败: ' + error.message);
+    }
+  }
+
+  async function clearErrorHistory() {
+    if (!confirm('确定要清空所有错误历史记录吗？')) return;
+
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'clearErrorHistory' });
+      if (response?.success) {
+        errorCache = [];
+        await renderErrorList();
+        showSuccess(elements.errorResults, '错误历史已清空');
+      } else {
+        showError(elements.errorResults, response?.error || '清空错误历史失败');
+      }
+    } catch (error) {
+      showError(elements.errorResults, '清空错误历史失败: ' + error.message);
+    }
+  }
+
+  function displayErrorList(errors) {
+    elements.errorResults.classList.remove('hidden');
+
+    if (errors.length === 0) {
+      showSuccess(elements.errorResults, '当前页面没有JavaScript错误');
+      return;
+    }
+
+    elements.errorResults.innerHTML = `
+      <div style="margin-bottom: 8px;"><strong>检测到 ${errors.length} 个JavaScript错误:</strong></div>
+      ${errors.map((error, index) => `
+        <div style="margin: 8px 0; padding: 12px; background: var(--error-bg); border: 1px solid var(--error-fg); border-radius: 8px; font-family: monospace; font-size: 12px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <span style="font-weight: bold; color: var(--error-fg);">${error.type.toUpperCase()}</span>
+            <span style="color: var(--muted); font-size: 10px;">${new Date(error.timestamp).toLocaleTimeString()}</span>
+          </div>
+          <div style="color: var(--text); margin-bottom: 4px; word-break: break-all;">${error.message}</div>
+          ${error.filename ? `<div style="color: var(--muted); font-size: 10px; margin-bottom: 4px;">${error.filename}:${error.lineno}:${error.colno}</div>` : ''}
+          ${error.stack ? `<div style="color: var(--muted); font-size: 10px; margin-bottom: 8px; max-height: 60px; overflow-y: auto; background: var(--surface); padding: 4px; border-radius: 4px;">${error.stack.substring(0, 300)}${error.stack.length > 300 ? '...' : ''}</div>` : ''}
+          <button class="analyze-error-btn" data-error-index="${index}" style="background: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 3px; font-size: 10px; cursor: pointer; margin-right: 8px;">AI 分析</button>
+          <button class="copy-error-btn" data-error-index="${index}" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 4px 8px; border-radius: 3px; font-size: 10px; cursor: pointer;">复制</button>
+        </div>
+      `).join('')}
+    `;
+
+    // 绑定AI分析按钮事件
+    document.querySelectorAll('.analyze-error-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const errorIndex = parseInt(e.target.dataset.errorIndex);
+        analyzeErrorWithAI(errors[errorIndex]);
+      });
+    });
+
+    // 绑定复制按钮事件
+    document.querySelectorAll('.copy-error-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const errorIndex = parseInt(e.target.dataset.errorIndex);
+        copyErrorToClipboard(errors[errorIndex]);
+      });
+    });
+  }
+
+  async function analyzeErrorWithAI(error) {
+    if (!error) return;
+
+    showLoading(elements.errorResults, 'AI 正在分析错误...');
+    try {
+      const configResult = await chrome.storage.sync.get(['aiConfig']);
+      const config = configResult.aiConfig;
+      if (!config) {
+        showError(elements.errorResults, '请先在配置页面设置AI服务');
+        return;
+      }
+
+      const response = await chrome.runtime.sendMessage({
+        action: 'analyzeError',
+        error: error,
+        config: config
+      });
+
+      if (response?.success) {
+        displayErrorAnalysis(error, response.data);
+      } else {
+        showError(elements.errorResults, response?.error || 'AI分析失败');
+      }
+    } catch (error) {
+      showError(elements.errorResults, 'AI分析失败: ' + error.message);
+    }
+  }
+
+  function displayErrorAnalysis(error, analysis) {
+    elements.errorResults.classList.remove('hidden');
+
+    const analysisHtml = `
+      <div style="margin-top: 16px; padding: 12px; background: var(--surface); border: 1px solid var(--primary); border-radius: 8px;">
+        <div style="font-weight: bold; color: var(--primary); margin-bottom: 8px;">AI 分析结果:</div>
+        <div style="white-space: pre-wrap; font-size: 12px; line-height: 1.5; color: var(--text);">${analysis}</div>
+      </div>
+    `;
+
+    // 如果已经有错误列表显示，在最后添加分析结果
+    if (elements.errorResults.innerHTML.includes('检测到')) {
+      elements.errorResults.innerHTML += analysisHtml;
+    } else {
+      elements.errorResults.innerHTML = analysisHtml;
+    }
+  }
+
+  async function copyErrorToClipboard(error) {
+    const errorText = `错误类型: ${error.type}
+错误信息: ${error.message}
+错误文件: ${error.filename || '未知'}
+错误位置: ${error.lineno || '未知'}:${error.colno || '未知'}
+发生时间: ${new Date(error.timestamp).toLocaleString()}
+错误堆栈:
+${error.stack || '无'}`;
+
+    try {
+      await navigator.clipboard.writeText(errorText);
+      showSuccess(elements.errorResults, '错误信息已复制到剪贴板');
+    } catch (error) {
+      showError(elements.errorResults, '复制失败: ' + error.message);
+    }
+  }
+
+  async function renderErrorList() {
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'getErrorHistory' });
+      if (response?.success) {
+        errorCache = response.data || [];
+        const hasErrors = errorCache.length > 0;
+
+        if (elements.errorCount) {
+          elements.errorCount.textContent = hasErrors ? `共 ${errorCache.length} 条` : '';
+        }
+        if (elements.errorEmpty) {
+          elements.errorEmpty.classList.toggle('hidden', hasErrors);
+        }
+        if (elements.errorList) {
+          elements.errorList.classList.toggle('hidden', !hasErrors);
+          elements.errorList.innerHTML = hasErrors
+            ? errorCache.map(error => createErrorItemMarkup(error)).join('')
+            : '';
+        }
+      }
+    } catch (error) {
+      console.error('渲染错误列表失败:', error);
+    }
+  }
+
+  function createErrorItemMarkup(error) {
+    const domain = error.url ? new URL(error.url).hostname : '未知站点';
+    const preview = error.message.length > 100 ? error.message.substring(0, 100) + '...' : error.message;
+    const relativeTime = formatRelativeTime(error.timestamp);
+    const timeLabel = relativeTime ? `${relativeTime} · ${formatDate(error.timestamp)}` : formatDate(error.timestamp);
+
+    return `
+      <div class="history-item">
+        <div class="history-item-title">${error.type.toUpperCase()}</div>
+        <div class="history-item-meta">
+          <span>${escapeHtml(domain)}</span>
+          <span>${escapeHtml(timeLabel)}</span>
+        </div>
+        <div class="history-item-preview">${escapeHtml(preview)}</div>
+      </div>
+    `;
+  }
+
   // 配置功能
   elements.aiProviderSelect.addEventListener('change', onProviderChange);
   elements.themeSelect.addEventListener('change', onThemeChange);
@@ -483,6 +724,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // 加载配置和历史记录
   loadConfiguration();
   renderHistoryList();
+  renderErrorList();
 
   async function loadConfiguration() {
     try {

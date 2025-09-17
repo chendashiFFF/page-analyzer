@@ -154,6 +154,51 @@ ${field.placeholder ? `提示信息: ${field.placeholder}` : ''}`).join('\n')}
     }
   }
 
+  // 错误存储和管理
+  async function storeError(error) {
+    try {
+      const result = await chrome.storage.local.get('errorHistory');
+      const errorHistory = result.errorHistory || [];
+
+      // 添加错误信息
+      errorHistory.push({
+        ...error,
+        storedAt: Date.now()
+      });
+
+      // 限制存储数量
+      if (errorHistory.length > 1000) {
+        errorHistory.splice(0, errorHistory.length - 1000);
+      }
+
+      await chrome.storage.local.set({ errorHistory });
+      return true;
+    } catch (error) {
+      console.error('存储错误失败:', error);
+      throw error;
+    }
+  }
+
+  async function getErrorHistory() {
+    try {
+      const result = await chrome.storage.local.get('errorHistory');
+      return result.errorHistory || [];
+    } catch (error) {
+      console.error('获取错误历史失败:', error);
+      throw error;
+    }
+  }
+
+  async function clearErrorHistory() {
+    try {
+      await chrome.storage.local.remove('errorHistory');
+      return true;
+    } catch (error) {
+      console.error('清除错误历史失败:', error);
+      throw error;
+    }
+  }
+
   if (request.action === 'generateSingleFieldData') {
     const field = request.field;
     const prompt = `请为以下表单字段生成合适的测试数据：
@@ -256,6 +301,62 @@ ${field.placeholder ? `提示信息: ${field.placeholder}` : ''}
   if (request.action === 'history:findBySignature' && historyManager) {
     historyManager.findBySignature(request.url, request.signature)
       .then(entry => sendResponse({ success: true, data: entry }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'captureError') {
+    // 存储错误信息
+    storeError(request.error)
+      .then(() => sendResponse({ success: true, data: '错误已存储' }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'analyzeError') {
+    const config = request.config || (await chrome.storage.sync.get('aiConfig')).aiConfig;
+    if (!config) {
+      sendResponse({ success: false, error: '请先配置AI服务' });
+      return true;
+    }
+
+    const prompt = `请分析以下JavaScript错误，提供详细的错误原因和解决方案：
+
+错误类型: ${request.error.type}
+错误信息: ${request.error.message}
+错误文件: ${request.error.filename || '未知'}
+错误位置: ${request.error.lineno || '未知'}:${request.error.colno || '未知'}
+错误堆栈: ${request.error.stack || '无'}
+页面URL: ${request.error.url}
+用户代理: ${request.error.userAgent}
+发生时间: ${request.error.timestamp}
+
+请按照以下格式进行分析：
+1. 错误类型和原因
+2. 可能的解决方案
+3. 预防措施
+4. 相关建议
+
+请用中文回答，保持专业和实用。`;
+
+    callAI(prompt, config, '你是一个资深的JavaScript开发者，专门帮助分析和解决JavaScript错误。')
+      .then(response => {
+        sendResponse({ success: true, data: response });
+      })
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'getErrorHistory') {
+    getErrorHistory()
+      .then(errors => sendResponse({ success: true, data: errors }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'clearErrorHistory') {
+    clearErrorHistory()
+      .then(() => sendResponse({ success: true, data: '错误历史已清除' }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }

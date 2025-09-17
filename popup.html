@@ -62,7 +62,7 @@
     .container { padding: 12px 12px 16px; }
 
     .tabs {
-      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 0 12px 12px;
+      display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; padding: 0 12px 12px;
     }
     .tab {
       padding: 10px 8px; border: 1px solid var(--border); background: var(--card); color: var(--muted);
@@ -178,6 +178,7 @@
   <div class="tabs">
     <button class="tab active" id="formTab">表单填充</button>
     <button class="tab" id="analyzeTab">内容分析</button>
+    <button class="tab" id="errorTab">错误监控</button>
     <button class="tab" id="configTab">配置</button>
   </div>
 
@@ -206,6 +207,27 @@
           </div>
           <div class="history-empty hidden" id="historyEmpty">暂无分析记录</div>
           <div class="history-list hidden" id="historyList"></div>
+        </div>
+      </div>
+
+      <!-- 错误监控标签 -->
+      <div class="tab-content" id="errorContent">
+        <div class="error-controls">
+          <button class="btn" id="getErrorListBtn">获取当前页面错误</button>
+          <button class="btn btn-primary" id="clearErrorsBtn">清除错误</button>
+          <button class="btn btn-secondary" id="toggleErrorMonitorBtn">启用错误监控</button>
+        </div>
+        <div class="results hidden" id="errorResults"></div>
+        <div class="error-history-section">
+          <div class="history-header">
+            <strong>错误历史</strong>
+            <div class="history-actions">
+              <span class="error-count" id="errorCount"></span>
+              <button class="link-btn" id="clearErrorHistoryBtn">清空历史</button>
+            </div>
+          </div>
+          <div class="error-empty hidden" id="errorEmpty">暂无错误记录</div>
+          <div class="error-list hidden" id="errorList"></div>
         </div>
       </div>
 
