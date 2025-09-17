@@ -1,5 +1,4 @@
 // Background Script - 简化版本
-console.log('Background script loaded');
 
 try {
   importScripts('modules/history-manager.js');
@@ -101,7 +100,6 @@ ${field.placeholder ? `提示信息: ${field.placeholder}` : ''}`).join('\n')}
 
     callAI(prompt, request.config, '你是一个AI助手，专门为表单字段生成测试数据。请严格按照JSON格式返回数据。')
       .then(response => {
-        console.log('AI原始响应:', response);
 
         try {
           // 简化JSON解析逻辑
@@ -116,7 +114,6 @@ ${field.placeholder ? `提示信息: ${field.placeholder}` : ''}`).join('\n')}
           const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             const data = JSON.parse(jsonMatch[0]);
-            console.log('解析后的JSON数据:', data);
             sendResponse({ success: true, data: data });
           } else {
             throw new Error('响应中未找到有效的JSON格式');

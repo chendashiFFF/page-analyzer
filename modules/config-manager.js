@@ -385,7 +385,6 @@ ${pageData.content.substring(0, 2000)}${pageData.content.length > 2000 ? '...' :
       return JSON.parse(response);
     } catch (error) {
       console.error('解析AI响应失败:', error);
-      console.log('原始响应:', response);
       throw new Error('AI返回的数据格式不正确');
     }
   }
