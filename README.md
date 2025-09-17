@@ -1,78 +1,173 @@
-# Page Analyzer
+# AI 助手
 
-Page Analyzer 是一个浏览器扩展，结合了页面内容洞察与 AI 自动化能力。它提供弹出式界面来检测表单、生成测试数据、分析当前页面，并缓存历史结果，适用于 Chrome/Chromium 与 Firefox 在开发者模式下的临时加载。
+AI 助手是一个智能浏览器扩展，提供 AI 驱动的表单填充和页面内容分析功能。该扩展基于真实 AI 服务（OpenAI、Anthropic、Google），使用模块化架构，确保代码简洁高效。
 
 ## 功能特性
-- 表单助手：检测当前标签页中的输入字段，并请求 AI 生成结构化测试数据回填
-- 页面快照：提取标题、描述、正文、标题层级与链接等关键信息，形成可读摘要
-- AI 分析：调用自定义或预设的对话模型对页面内容进行中文总结，可选择强制刷新缓存
-- 历史记录：按页面签名保存最近分析结果，支持快速回看与重新触发分析
-- 灵活配置：内置 OpenAI、Anthropic 预设，支持自定义 API 端点、模型、Token 与温度设置
+- **AI 表单填充**：自动检测页面表单字段，使用真实 AI 服务生成相关测试数据
+- **页面内容分析**：提取页面基本信息并提供 AI 深度分析
+- **多 AI 服务支持**：支持 OpenAI、Anthropic 和 Google Gemini
+- **智能配置管理**：安全的 API 密钥存储和连接测试
+- **模块化设计**：清晰的代码架构，易于维护和扩展
 
 ## 快速开始
-1. 克隆或下载本仓库，并确保所有文件保持在同一根目录。
-2. 准备一个可用的 LLM API Key（OpenAI、Anthropic 或兼容的自定义服务）。
 
-### 在 Chrome/Chromium 中加载
-1. 打开 `chrome://extensions` 并启用开发者模式。
-2. 选择“加载已解压的扩展程序”，指向仓库根目录。
-3. 每次修改后使用“重新加载”按钮刷新扩展。
+### 扩展安装
+1. 打开 Chrome 浏览器 `chrome://extensions/`
+2. 启用"开发者模式"
+3. 点击"加载已解压的扩展程序"
+4. 选择项目文件夹
 
-### 在 Firefox 中加载
-1. 打开 `about:debugging#/runtime/this-firefox`。
-2. 点击“加载临时附加组件”，选择仓库根目录下的 `manifest.json`。
-3. 代码更新后重复上述步骤重新加载。
+### AI 配置要求
+**必须配置真实 AI 服务：**
 
-## 配置 AI 服务
-1. 打开扩展弹窗，切换到“配置”标签页。
-2. 在“AI 服务提供商”下拉中选择 `OpenAI`、`Anthropic` 或 `Custom`。
-3. 填写 API Endpoint、API Key、模型名称，必要时调整 `Max Tokens` 与 `Temperature`。
-4. 使用“测试连接”验证设置，成功后点击“保存配置”。配置持久化在 `chrome.storage.sync` 中，可在多设备间同步。
-5. 对于 `Custom` 类型，请确认端点遵循 OpenAI Chat Completions 兼容协议或相同请求结构。
+#### OpenAI 配置
+- API Key：从 https://platform.openai.com 获取
+- 默认模型：gpt-3.5-turbo
+- API URL：https://api.openai.com/v1/chat/completions
 
-> 默认会校验 API Key 格式（基于提供商的正则约束），如需跳过校验请改用 `Custom` 类型。
+#### Anthropic 配置
+- API Key：从 https://console.anthropic.com 获取
+- 默认模型：claude-3-haiku-20240307
+- API URL：https://api.anthropic.com/v1/messages
+
+#### Google Gemini 配置
+- API Key：从 https://makersuite.google.com/app/apikey 获取
+- 默认模型：gemini-pro
+- API URL：https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent
 
 ## 使用指南
-### 表单助手
-- 点击“检测表单”获取页面中的输入元素并预览字段信息。
-- 配置 AI 后点击“AI 填充表单”生成并写入测试值，扩展会触发 `input` 与 `change` 事件以兼容前端校验。
 
-### 页面分析
-- “分析页面”在本地汇总 DOM 数据（标题、正文、链接、图片、语言、词频等）。
-- “AI 分析页面”把汇总结果发送给后台服务，请求中文总结，并自动缓存。
-- “刷新缓存”会忽略历史记录，强制重新请求并记录来源标签。
+### 表单填充功能
+1. 打开包含表单的网页
+2. 点击扩展图标打开弹窗
+3. 切换到"表单助手"标签页
+4. 点击"检测表单字段"查看可填充字段
+5. 配置 AI 服务后点击"AI 智能填充"生成并填充数据
 
-### 历史记录
-- 弹窗底部展示最近分析的页面，包含标题、时间戳和摘要预览。
-- 历史记录基于规范化 URL 与页面签名去重，最多保留 20 条。
-- 使用“清除历史”可同时删除本地 (`chrome.storage.local`) 与同步 (`chrome.storage.sync`) 数据。
+### 页面分析功能
+1. 在任意网页点击扩展图标
+2. 切换到"页面分析"标签页
+3. 点击"分析页面基本信息"获取页面摘要
+4. 点击"AI 内容分析"获取深度内容分析
 
-## 数据与权限
-- 权限：`activeTab`、`scripting`、`storage` 用于注入内容脚本和保存配置。
-- Host 权限覆盖 `https://*/*` 与 `http://*/*`，以便在任意页面读取内容并调用自定义 AI 端点。
-- 配置与历史记录保存在浏览器存储中，不会上传到远程服务器。
-- API Key 仅在浏览器内部用于请求你指定的模型服务。
+### 配置管理
+1. 打开扩展弹窗，切换到"配置"标签页
+2. 选择 AI 服务提供商（OpenAI、Anthropic、Google）
+3. 填写对应的 API Key
+4. 使用"测试连接"验证配置
+5. 点击"保存配置"完成设置
 
-## 开发说明
-- 目录结构
-  ```
-  ├─ background.js          // Service Worker，处理 AI 调用与历史记录
-  ├─ content.js             // 内容脚本，提取页面数据与填充表单
-  ├─ popup.html / popup.js  // 弹窗界面与交互逻辑
-  ├─ modules/
-  │  ├─ config-manager.js   // 配置读取、校验与连通性测试
-  │  └─ history-manager.js  // 缓存分析结果与页面签名
-  └─ icons/                 // 扩展图标资源
-  ```
-- 提交前可按照以下手动校验流程：
-  - 弹窗：验证三个标签页的按钮与状态提示是否符合预期。
-  - 内容脚本：在含表单的页面测试字段检测与填充效果。
-  - 后台：在 `chrome://extensions` 中打开 Service Worker 日志查看 API 请求结果。
-- 修改 manifest 权限或新增模块时，请更新 README 并在 PR 描述中说明理由。
+## 技术实现
+
+### 项目架构
+```
+page-analyzer/
+├── manifest.json          # 扩展程序清单文件
+├── popup.html             # 弹出窗口界面
+├── popup.js               # 弹出窗口逻辑
+├── content.js             # 内容脚本，包含内联模块
+├── background.js          # 后台脚本，AI API 调用
+├── modules/               # 模块化组件
+│   ├── config-manager.js  # 配置管理模块
+│   └── history-manager.js  # 历史记录管理模块
+└── icons/                 # 图标文件
+```
+
+### 核心功能模块
+
+#### 1. 表单填充模块（内联在 content.js）
+- 自动检测页面表单字段（input、textarea、select）
+- 多策略标签提取：label、aria-label、placeholder
+- 字段类型检测和上下文信息收集
+- 基于 AI 生成相关测试数据
+
+#### 2. 页面分析模块（内联在 content.js）
+- 提取页面基本信息（标题、URL、字数等）
+- AI 深度分析页面内容主题和要点
+- 专注于内容总结，提取核心观点
+
+#### 3. 配置管理模块
+- 支持多种 AI 服务配置
+- 安全的 API 密钥存储
+- 连接测试和配置验证
+
+### 通信架构
+简化的两级消息传递：
+1. `popup.js` ↔ `content.js`：UI 交互和页面操作
+2. `content.js` ↔ `background.js`：AI 数据生成请求
+
+## 扩展权限
+
+```json
+{
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ]
+}
+```
+
+- `activeTab`：访问当前活动标签页
+- `scripting`：执行内容脚本
+- `storage`：存储配置数据
+- `host_permissions`：访问 AI 服务 API
+
+## 重要约束
+
+### 无模拟数据政策
+- **严格禁止**任何模拟/假数据生成
+- 所有 AI 功能必须使用真实 API
+- 用户必须配置有效的 API 密钥才能使用
+
+### AI 分析专注点
+- 内容分析专注于**页面内容总结**
+- 提取主题、关键信息、核心观点
+- **不进行 SEO 分析**，不关注技术指标
+
+### 代码简洁性
+- 移除所有冗余代码和功能
+- 保持最小化的依赖关系
+- 优先使用原生 JavaScript API
+
+## 功能测试
+
+### 表单填充测试
+1. 打开包含表单的网页
+2. 点击"检测表单字段"
+3. 点击"AI 智能填充"
+
+### 内容分析测试
+1. 在任意网页点击"分析页面基本信息"
+2. 点击"AI 内容分析"获取深度分析
 
 ## 故障排查
-- “检测表单”无响应：确保目标标签页允许注入内容脚本（例如非 `chrome://` 页面）。
-- “AI 填充表单”失败：确认已保存有效配置，且模型端点可访问。
-- “AI 分析页面”返回缓存：点击“刷新缓存”或清除历史记录即可强制重试。
 
-欢迎在实际项目中根据需求扩展更多页面解析、权限或 UI 功能。
+### 常见问题
+- **"检测表单"无响应**：确保目标标签页允许注入内容脚本（非 `chrome://` 页面）
+- **"AI 填充表单"失败**：确认已保存有效配置，且模型端点可访问
+- **"AI 分析页面"无结果**：检查 API 密钥配置和网络连接
+- **扩展无法加载**：确认 manifest.json 格式正确，所有文件路径存在
+
+### 调试方法
+1. 在 `chrome://extensions/` 中查看 Service Worker 控制台日志
+2. 检查popup.html的开发者工具控制台
+3. 验证API密钥格式和网络连接状态
+4. 确认AI服务配额和限制
+
+## 开发指南
+
+### 代码约定
+- 消息传递使用标准Chrome扩展API
+- 模块化设计，功能职责清晰分离
+- 错误处理完善，提供用户友好的提示信息
+- 优先使用原生JavaScript，减少外部依赖
+
+### 核心函数
+- **表单处理**：`detectFormFields()`, `fillFormWithAI()`
+- **页面分析**：`analyzePageContent()`, `analyzeWithAI()`
+- **AI调用**：`generateFormData()`, `analyzePageContent()`
+- **配置管理**：`saveConfig()`, `testConnection()`
+
+欢迎贡献代码和建议！
