@@ -110,6 +110,62 @@ const formFiller = new (function() {
     return response.data;
   };
 
+  this.fillSingleFieldWithAI = async function(fieldIndex) {
+    if (this.formFields.length === 0) {
+      throw new Error('未检测到表单字段');
+    }
+
+    if (fieldIndex < 0 || fieldIndex >= this.formFields.length) {
+      throw new Error('无效的字段索引');
+    }
+
+    const field = this.formFields[fieldIndex];
+
+    // 获取AI配置
+    const configResult = await new Promise((resolve, reject) => {
+      chrome.storage.sync.get(['aiConfig'], (result) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(result);
+        }
+      });
+    });
+
+    const config = configResult.aiConfig;
+    if (!config) {
+      throw new Error('请先在配置页面设置AI服务');
+    }
+
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        action: 'generateSingleFieldData',
+        field: {
+          name: field.name,
+          type: field.type,
+          label: field.label,
+          placeholder: field.placeholder,
+          required: field.required
+        },
+        config: config
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response);
+        }
+      });
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || '字段填充响应无效');
+    }
+
+    const fieldValue = response.data;
+    this.setFieldValue(field.element, fieldValue);
+    return fieldValue;
+  };
+
   this.fillFields = function(data) {
     this.formFields.forEach(field => {
       const fieldData = data[field.name];
@@ -321,6 +377,13 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 
     else if (request.action === 'fillForm') {
       formFiller.fillFormWithAI()
+        .then(data => sendResponse({success: true, data: data}))
+        .catch(error => sendResponse({success: false, error: error.message}));
+      return true;
+    }
+
+    else if (request.action === 'fillSingleField') {
+      formFiller.fillSingleFieldWithAI(request.fieldIndex)
         .then(data => sendResponse({success: true, data: data}))
         .catch(error => sendResponse({success: false, error: error.message}));
       return true;

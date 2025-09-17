@@ -114,13 +114,95 @@ document.addEventListener('DOMContentLoaded', function () {
     elements.formResults.classList.remove('hidden');
     elements.formResults.innerHTML = `
       <div style="margin-bottom: 8px;"><strong>检测到 ${fields.length} 个表单字段</strong></div>
-      ${fields.map(field => `
-        <div style="margin: 4px 0; padding: 4px; background: #f0f0f0; border-radius: 3px;">
-          <strong>${field.label}</strong> (${field.type})
-          ${field.required ? '<span style="color: red;">*</span>' : ''}
+      ${fields.map((field, index) => `
+        <div style="margin: 4px 0; padding: 8px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <div>
+              <strong>${field.label}</strong> (${field.type})
+              ${field.required ? '<span style="color: red;">*</span>' : ''}
+            </div>
+            <button class="field-fill-btn" data-field-index="${index}" style="padding: 4px 8px; font-size: 12px; background: #6366f1; color: white; border: none; border-radius: 4px; cursor: pointer;">
+              单独填充
+            </button>
+          </div>
+          ${field.placeholder ? `<div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">提示: ${field.placeholder}</div>` : ''}
+          <div class="field-result" data-field-index="${index}" style="display: none; margin-top: 4px; padding: 4px; background: #e8f5e8; border-radius: 3px; font-size: 12px;"></div>
         </div>
       `).join('')}
     `;
+
+    // 为每个单独填充按钮添加事件监听
+    document.querySelectorAll('.field-fill-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const fieldIndex = parseInt(this.dataset.fieldIndex);
+        fillSingleField(fieldIndex);
+      });
+    });
+  }
+
+  async function fillSingleField(fieldIndex) {
+    if (fieldIndex < 0 || fieldIndex >= detectedFields.length) {
+      showError(elements.formResults, '无效的字段索引');
+      return;
+    }
+
+    const field = detectedFields[fieldIndex];
+    const resultDiv = document.querySelector(`.field-result[data-field-index="${fieldIndex}"]`);
+    const btn = document.querySelector(`.field-fill-btn[data-field-index="${fieldIndex}"]`);
+
+    // 显示加载状态
+    if (resultDiv) {
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div class="loading" style="width: 12px; height: 12px;"></div>正在生成数据...';
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '填充中...';
+    }
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        action: 'fillSingleField',
+        fieldIndex: fieldIndex
+      });
+
+      if (response?.success) {
+        if (resultDiv) {
+          resultDiv.innerHTML = `✅ 填充成功: ${response.data || '数据已生成'}`;
+        }
+        if (btn) {
+          btn.textContent = '已填充';
+          btn.style.background = '#16a34a';
+        }
+      } else {
+        if (resultDiv) {
+          resultDiv.innerHTML = `❌ 填充失败: ${response?.error || '未知错误'}`;
+          resultDiv.style.background = '#fee2e2';
+        }
+        if (btn) {
+          btn.textContent = '重试';
+          btn.disabled = false;
+        }
+      }
+    } catch (error) {
+      // 如果是连接错误，显示友好的提示
+      if (error.message.includes('Could not establish connection') || error.message.includes('Receiving end does not exist')) {
+        if (resultDiv) {
+          resultDiv.innerHTML = '❌ 无法填充字段，请刷新页面后重试';
+          resultDiv.style.background = '#fee2e2';
+        }
+      } else {
+        if (resultDiv) {
+          resultDiv.innerHTML = `❌ 填充失败: ${error.message}`;
+          resultDiv.style.background = '#fee2e2';
+        }
+      }
+      if (btn) {
+        btn.textContent = '重试';
+        btn.disabled = false;
+      }
+    }
   }
 
   // 页面分析功能
