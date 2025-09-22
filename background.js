@@ -532,10 +532,20 @@ ${field.placeholder ? `提示信息: ${field.placeholder}` : ''}
   }
 
   if (request.action === 'analyzeError') {
-    // 处理异步获取配置的逻辑
-    const getConfigAndAnalyze = async () => {
-      try {
-        const config = request.config || (await chrome.storage.sync.get('aiConfig')).aiConfig;
+    const resolveConfig = request.config
+      ? Promise.resolve(request.config)
+      : new Promise((resolve, reject) => {
+          chrome.storage.sync.get(['aiConfig'], (result) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(result.aiConfig);
+            }
+          });
+        });
+
+    resolveConfig
+      .then(config => {
         if (!config) {
           sendResponse({ success: false, error: '请先配置AI服务' });
           return;
@@ -560,14 +570,14 @@ ${field.placeholder ? `提示信息: ${field.placeholder}` : ''}
 
 请用中文回答，保持专业和实用。`;
 
-        const response = await callAI(prompt, config, '你是一个资深的JavaScript开发者，专门帮助分析和解决JavaScript错误。');
-        sendResponse({ success: true, data: response });
-      } catch (error) {
-        sendResponse({ success: false, error: error.message });
-      }
-    };
+        callAI(prompt, config, '你是一个资深的JavaScript开发者，专门帮助分析和解决JavaScript错误。')
+          .then(response => {
+            sendResponse({ success: true, data: response });
+          })
+          .catch(error => sendResponse({ success: false, error: error.message }));
+      })
+      .catch(error => sendResponse({ success: false, error: error.message }));
 
-    getConfigAndAnalyze();
     return true;
   }
 
