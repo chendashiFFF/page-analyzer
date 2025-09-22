@@ -457,9 +457,9 @@ const errorMonitor = new (function() {
   this.maxErrors = 100;
   this.isEnabled = true;
   this.errorFilters = {
-    ignoreScripts: true,
-    ignoreThirdParty: true,
-    ignoreChromeExtensions: true
+    ignoreScripts: true,         // 忽略脚本错误
+    ignoreThirdParty: true,      // 忽略第三方资源错误
+    ignoreChromeExtensions: true // 忽略扩展自身错误
   };
 
   this.init = function() {
@@ -467,22 +467,46 @@ const errorMonitor = new (function() {
   };
 
   this.setupErrorListeners = function() {
-    // 全局错误处理
-    window.addEventListener('error', (event) => this.handleGlobalError(event));
-    window.addEventListener('unhandledrejection', (event) => this.handleUnhandledRejection(event));
+    // 保存原始console.error
+    this.originalConsoleError = console.error;
+    
+    // 全局错误处理 - 使用箭头函数保持this上下文
+    const globalErrorHandler = (event) => {
+      this.handleGlobalError(event);
+    };
+    
+    const unhandledRejectionHandler = (event) => {
+      this.handleUnhandledRejection(event);
+    };
+    
+    // 移除可能存在的旧监听器
+    window.removeEventListener('error', globalErrorHandler);
+    window.removeEventListener('unhandledrejection', unhandledRejectionHandler);
+    
+    // 添加新的错误监听器
+    window.addEventListener('error', globalErrorHandler, true); // 使用捕获阶段
+    window.addEventListener('unhandledrejection', unhandledRejectionHandler, true);
+    
+    // 存储监听器引用以便后续清理
+    this.globalErrorHandler = globalErrorHandler;
+    this.unhandledRejectionHandler = unhandledRejectionHandler;
+    
+    // 重写console.error
     console.error = (...args) => this.handleConsoleError(args);
   };
 
   this.handleGlobalError = function(event) {
-    if (!this.isEnabled) return;
+    if (!this.isEnabled) {
+      return;
+    }
 
     const error = {
       type: 'error',
-      message: event.message,
-      filename: event.filename,
-      lineno: event.lineno,
-      colno: event.colno,
-      stack: event.error?.stack || '',
+      message: event.message || 'Unknown error',
+      filename: event.filename || window.location.href,
+      lineno: event.lineno || 0,
+      colno: event.colno || 0,
+      stack: event.error?.stack || (new Error().stack),
       timestamp: new Date().toISOString(),
       url: window.location.href,
       userAgent: navigator.userAgent
@@ -511,7 +535,12 @@ const errorMonitor = new (function() {
   };
 
   this.handleConsoleError = function(args) {
-    if (!this.isEnabled) return;
+    if (!this.isEnabled) {
+      if (this.originalConsoleError) {
+        this.originalConsoleError.apply(console, args);
+      }
+      return;
+    }
 
     const message = args.map(arg => {
       if (typeof arg === 'object') {
@@ -534,8 +563,9 @@ const errorMonitor = new (function() {
     }
 
     // 调用原始console.error
-    const originalConsoleError = console.constructor.prototype.error;
-    originalConsoleError.apply(console, args);
+    if (this.originalConsoleError) {
+      this.originalConsoleError.apply(console, args);
+    }
   };
 
   this.extractStackFromConsole = function(args) {
@@ -555,14 +585,14 @@ const errorMonitor = new (function() {
   };
 
   this.shouldCaptureError = function(error) {
-    // 检查是否为脚本错误
-    if (error.filename && this.errorFilters.ignoreScripts) {
-      if (error.filename.includes('chrome-extension://') ||
-          error.filename.includes('moz-extension://')) {
-        return false;
-      }
+    // 过滤扩展自身的错误
+    if (error.filename && (
+        error.filename.includes('chrome-extension://') ||
+        error.filename.includes('moz-extension://')
+    )) {
+      return false;
     }
-
+    
     // 检查是否为第三方资源
     if (error.filename && this.errorFilters.ignoreThirdParty) {
       try {
@@ -580,9 +610,7 @@ const errorMonitor = new (function() {
     const ignorePatterns = [
       /Script error/i,
       /Failed to fetch/i,
-      /Network request failed/i,
-      /TypeError: undefined is not a function/i,
-      /TypeError: Cannot read property/i
+      /Network request failed/i
     ];
 
     if (ignorePatterns.some(pattern => pattern.test(error.message))) {
@@ -1048,6 +1076,16 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
       sendResponse({success: true, message: 'pong'});
     }
 
+    else if (request.action === 'checkErrorMonitor') {
+      const status = {
+        isEnabled: errorMonitor.isEnabled,
+        errorCount: errorMonitor.errors.length,
+        hasInit: !!errorMonitor.originalConsoleError,
+        filters: errorMonitor.errorFilters
+      };
+      sendResponse({success: true, data: status});
+    }
+
     else if (request.action === 'analyzePageWithAI') {
       pageAnalyzer.analyzeWithAI()
         .then(data => sendResponse({success: true, data: data}))
@@ -1056,7 +1094,8 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     }
 
     else if (request.action === 'getErrorList') {
-      sendResponse({success: true, data: errorMonitor.getErrors()});
+      const errors = errorMonitor.getErrors();
+      sendResponse({success: true, data: errors});
     }
 
     else if (request.action === 'clearErrors') {
@@ -1064,10 +1103,6 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
       sendResponse({success: true, data: '错误已清除'});
     }
 
-    else if (request.action === 'toggleErrorMonitor') {
-      errorMonitor.setEnabled(request.enabled);
-      sendResponse({success: true, data: `错误监控已${request.enabled ? '启用' : '禁用'}`});
-    }
 
     else if (request.action === 'analyzeErrorWithAI') {
       const errorId = request.errorId;

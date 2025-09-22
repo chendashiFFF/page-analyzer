@@ -28,7 +28,6 @@ document.addEventListener('DOMContentLoaded', function () {
     refreshCache: document.getElementById('refreshCacheBtn'),
     getErrorList: document.getElementById('getErrorListBtn'),
     clearErrors: document.getElementById('clearErrorsBtn'),
-    toggleErrorMonitor: document.getElementById('toggleErrorMonitorBtn'),
     clearErrorHistory: document.getElementById('clearErrorHistoryBtn'),
     saveConfig: document.getElementById('saveConfigBtn'),
     testConnection: document.getElementById('testConnectionBtn'),
@@ -61,7 +60,6 @@ document.addEventListener('DOMContentLoaded', function () {
   let historyCache = [];
   let errorCache = [];
   let isFillingForm = false; // 防止重复点击
-  let isErrorMonitorEnabled = true; // 错误监控状态
 
   // 标签切换
   Object.keys(tabs).forEach(key => tabs[key].addEventListener('click', () => switchTab(key)));
@@ -325,7 +323,6 @@ document.addEventListener('DOMContentLoaded', function () {
   // 错误监控功能
   buttons.getErrorList.addEventListener('click', getErrorList);
   buttons.clearErrors.addEventListener('click', clearErrors);
-  buttons.toggleErrorMonitor.addEventListener('click', toggleErrorMonitor);
   buttons.clearErrorHistory.addEventListener('click', clearErrorHistory);
 
   // 历史记录交互
@@ -499,6 +496,7 @@ document.addEventListener('DOMContentLoaded', function () {
       await ensureContentScript(tab.id);
 
       const response = await chrome.tabs.sendMessage(tab.id, { action: 'getErrorList' });
+      
       if (response?.success) {
         displayErrorList(response.data);
       } else {
@@ -526,28 +524,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  async function toggleErrorMonitor() {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      await ensureContentScript(tab.id);
-
-      isErrorMonitorEnabled = !isErrorMonitorEnabled;
-      const response = await chrome.tabs.sendMessage(tab.id, {
-        action: 'toggleErrorMonitor',
-        enabled: isErrorMonitorEnabled
-      });
-
-      if (response?.success) {
-        buttons.toggleErrorMonitor.textContent = isErrorMonitorEnabled ? '禁用错误监控' : '启用错误监控';
-        buttons.toggleErrorMonitor.className = isErrorMonitorEnabled ? 'btn btn-secondary' : 'btn btn-primary';
-        showSuccess(elements.errorResults, response.data);
-      } else {
-        showError(elements.errorResults, response?.error || '切换错误监控状态失败');
-      }
-    } catch (error) {
-      showError(elements.errorResults, '切换错误监控状态失败: ' + error.message);
-    }
-  }
 
   async function clearErrorHistory() {
     if (!confirm('确定要清空所有错误历史记录吗？')) return;
@@ -566,6 +542,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
+
+
   function displayErrorList(errors) {
     elements.errorResults.classList.remove('hidden');
 
@@ -575,18 +553,20 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     elements.errorResults.innerHTML = `
-      <div style="margin-bottom: 8px;"><strong>检测到 ${errors.length} 个JavaScript错误:</strong></div>
+      <div class="error-header">检测到 ${errors.length} 个JavaScript错误</div>
       ${errors.map((error, index) => `
-        <div style="margin: 8px 0; padding: 12px; background: var(--error-bg); border: 1px solid var(--error-fg); border-radius: 8px; font-family: monospace; font-size: 12px;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-            <span style="font-weight: bold; color: var(--error-fg);">${error.type.toUpperCase()}</span>
-            <span style="color: var(--muted); font-size: 10px;">${new Date(error.timestamp).toLocaleTimeString()}</span>
+        <div class="error-item">
+          <div class="error-item-header">
+            <span class="error-type">${error.type.toUpperCase()}</span>
+            <span class="error-timestamp">${new Date(error.timestamp).toLocaleTimeString()}</span>
           </div>
-          <div style="color: var(--text); margin-bottom: 4px; word-break: break-all;">${error.message}</div>
-          ${error.filename ? `<div style="color: var(--muted); font-size: 10px; margin-bottom: 4px;">${error.filename}:${error.lineno}:${error.colno}</div>` : ''}
-          ${error.stack ? `<div style="color: var(--muted); font-size: 10px; margin-bottom: 8px; max-height: 60px; overflow-y: auto; background: var(--surface); padding: 4px; border-radius: 4px;">${error.stack.substring(0, 300)}${error.stack.length > 300 ? '...' : ''}</div>` : ''}
-          <button class="analyze-error-btn" data-error-index="${index}" style="background: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 3px; font-size: 10px; cursor: pointer; margin-right: 8px;">AI 分析</button>
-          <button class="copy-error-btn" data-error-index="${index}" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 4px 8px; border-radius: 3px; font-size: 10px; cursor: pointer;">复制</button>
+          <div class="error-message">${escapeHtml(error.message)}</div>
+          ${error.filename ? `<div class="error-location">${escapeHtml(error.filename)}:${error.lineno}:${error.colno}</div>` : ''}
+          ${error.stack ? `<div class="error-stack">${escapeHtml(error.stack.substring(0, 500))}${error.stack.length > 500 ? '\n...' : ''}</div>` : ''}
+          <div class="error-actions">
+            <button class="error-btn error-btn-primary analyze-error-btn" data-error-index="${index}">AI 分析</button>
+            <button class="error-btn error-btn-secondary copy-error-btn" data-error-index="${index}">复制</button>
+          </div>
         </div>
       `).join('')}
     `;
@@ -686,9 +666,18 @@ ${error.stack || '无'}`;
         }
         if (elements.errorList) {
           elements.errorList.classList.toggle('hidden', !hasErrors);
+          
+          // 移除旧的事件监听器
+          elements.errorList.removeEventListener('click', onErrorHistoryItemClick);
+          
           elements.errorList.innerHTML = hasErrors
             ? errorCache.map(error => createErrorItemMarkup(error)).join('')
             : '';
+          
+          // 添加展开/收起功能的事件监听器
+          if (hasErrors) {
+            elements.errorList.addEventListener('click', onErrorHistoryItemClick);
+          }
         }
       }
     } catch (error) {
@@ -703,15 +692,368 @@ ${error.stack || '无'}`;
     const timeLabel = relativeTime ? `${relativeTime} · ${formatDate(error.timestamp)}` : formatDate(error.timestamp);
 
     return `
-      <div class="history-item">
+      <div class="history-item error-history-item" data-error-id="${error.id}" style="cursor: pointer;">
         <div class="history-item-title">${error.type.toUpperCase()}</div>
         <div class="history-item-meta">
           <span>${escapeHtml(domain)}</span>
           <span>${escapeHtml(timeLabel)}</span>
         </div>
         <div class="history-item-preview">${escapeHtml(preview)}</div>
+        <div class="error-details" style="display: none;">
+          <div class="error-details-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+            <h4 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--text);">📋 错误详情</h4>
+            <div style="display: flex; gap: 8px;">
+              <button class="error-btn error-btn-secondary quick-copy-btn" data-error-id="${error.id}" style="padding: 4px 12px; font-size: 11px;">📋 一键复制</button>
+              <button class="error-btn error-btn-secondary collapse-btn" style="padding: 4px 8px; font-size: 11px;">✕ 收起</button>
+            </div>
+          </div>
+          <div class="error-detail-section">
+            <div class="error-detail-label">完整错误信息：</div>
+            <div class="error-detail-content" style="word-break: break-all; white-space: pre-wrap; max-width: 100%;">${escapeHtml(error.message)}</div>
+          </div>
+          ${error.filename ? `
+            <div class="error-detail-section" style="margin-top: 8px;">
+              <div class="error-detail-label">文件位置：</div>
+              <div class="error-detail-content" style="word-break: break-all;">${escapeHtml(error.filename)}${error.lineno ? `:${error.lineno}` : ''}${error.colno ? `:${error.colno}` : ''}</div>
+            </div>
+          ` : ''}
+          ${error.stack ? `
+            <div class="error-detail-section" style="margin-top: 8px;">
+              <div class="error-detail-label">错误堆栈：</div>
+              <div class="error-detail-content error-stack" style="font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12px; word-break: break-all; white-space: pre-wrap; max-width: 100%; overflow-x: hidden; background-color: var(--card); border: 1px solid var(--border); border-radius: 6px;">${escapeHtml(error.stack)}</div>
+            </div>
+          ` : ''}
+          ${error.userAgent ? `
+            <div class="error-detail-section" style="margin-top: 8px;">
+              <div class="error-detail-label">用户代理：</div>
+              <div class="error-detail-content" style="word-break: break-all; font-size: 12px; color: var(--muted);">${escapeHtml(error.userAgent)}</div>
+            </div>
+          ` : ''}
+          <div class="error-actions" style="margin-top: 16px; display: flex; gap: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+            <button class="error-btn error-btn-primary ai-analyze-btn" data-error-id="${error.id}">🤖 AI 分析</button>
+            <button class="error-btn error-btn-secondary copy-error-btn" data-error-id="${error.id}">📋 复制错误</button>
+          </div>
+          <div class="ai-analysis-container" style="display: ${error.aiAnalysis ? 'block' : 'none'}; margin-top: 16px; padding-top: 16px; border-top: 2px solid var(--primary);">
+            <div class="analysis-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+              <span style="font-size: 16px;">🤖</span>
+              <span style="font-weight: 700; font-size: 14px; color: var(--text);">AI 分析结果</span>
+              <span class="badge badge-info" style="margin-left: auto;">${error.aiAnalysis ? '已缓存' : '智能诊断'}</span>
+            </div>
+            <div class="analysis-content" style="background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">${error.aiAnalysis ? escapeHtml(error.aiAnalysis) : ''}</div>
+            <div class="analysis-actions" style="margin-top: 12px; display: flex; gap: 8px;">
+              <button class="error-btn error-btn-secondary copy-analysis-btn" data-error-id="${error.id}">📋 复制分析</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
+  }
+
+  // 处理错误历史项点击事件
+  function onErrorHistoryItemClick(event) {
+    // 检查是否点击了按钮
+    const aiAnalyzeBtn = event.target.closest('.ai-analyze-btn');
+    const copyErrorBtn = event.target.closest('.copy-error-btn');
+    const copyAnalysisBtn = event.target.closest('.copy-analysis-btn');
+    const quickCopyBtn = event.target.closest('.quick-copy-btn');
+    const collapseBtn = event.target.closest('.collapse-btn');
+    
+    if (aiAnalyzeBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      const errorId = aiAnalyzeBtn.dataset.errorId;
+      analyzeErrorWithAI(errorId);
+      return;
+    }
+    
+    if (copyErrorBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      const errorId = copyErrorBtn.dataset.errorId;
+      copyErrorToClipboard(errorId);
+      return;
+    }
+    
+    if (copyAnalysisBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      const errorId = copyAnalysisBtn.dataset.errorId;
+      copyAnalysisResult(errorId);
+      return;
+    }
+    
+    if (quickCopyBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      const errorId = quickCopyBtn.dataset.errorId;
+      quickCopyError(errorId);
+      return;
+    }
+    
+    if (collapseBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      const errorItem = event.target.closest('.error-history-item');
+      if (errorItem) {
+        collapseErrorDetails(errorItem);
+      }
+      return;
+    }
+    
+    // 如果点击的不是按钮，则处理展开/收起
+    const errorItem = event.target.closest('.error-history-item');
+    if (!errorItem) return;
+    
+    // 检查是否点击在已展开的详情区域内
+    const errorDetails = errorItem.querySelector('.error-details');
+    if (!errorDetails) return;
+    
+    const isExpanded = errorDetails.style.display === 'block';
+    const clickedInDetails = event.target.closest('.error-details');
+    
+    // 如果已展开且点击在详情区域内，不做任何操作
+    if (isExpanded && clickedInDetails) {
+      return;
+    }
+    
+    // 否则处理展开/收起
+    if (isExpanded) {
+      collapseErrorDetails(errorItem);
+    } else {
+      expandErrorDetails(errorItem);
+    }
+  }
+
+  // 展开错误详情
+  function expandErrorDetails(errorItem) {
+    const errorDetails = errorItem.querySelector('.error-details');
+    if (!errorDetails) return;
+    
+    errorDetails.style.display = 'block';
+    errorItem.classList.add('expanded');
+    
+    // 添加展开动画
+    errorDetails.style.opacity = '0';
+    errorDetails.style.transform = 'translateY(-10px)';
+    
+    setTimeout(() => {
+      errorDetails.style.transition = 'all 0.3s ease';
+      errorDetails.style.opacity = '1';
+      errorDetails.style.transform = 'translateY(0)';
+    }, 10);
+  }
+
+  // 收起错误详情
+  function collapseErrorDetails(errorItem) {
+    const errorDetails = errorItem.querySelector('.error-details');
+    if (!errorDetails) return;
+    
+    errorDetails.style.transition = 'all 0.2s ease';
+    errorDetails.style.opacity = '0';
+    errorDetails.style.transform = 'translateY(-5px)';
+    
+    setTimeout(() => {
+      errorDetails.style.display = 'none';
+      errorItem.classList.remove('expanded');
+      errorDetails.style.transition = '';
+      errorDetails.style.opacity = '';
+      errorDetails.style.transform = '';
+    }, 200);
+  }
+
+  // 一键复制错误信息
+  async function quickCopyError(errorId) {
+    try {
+      const error = errorCache.find(e => e.id === errorId);
+      if (!error) return;
+
+      const errorText = `错误类型: ${error.type}
+错误信息: ${error.message}
+${error.filename ? `文件位置: ${error.filename}${error.lineno ? `:${error.lineno}` : ''}${error.colno ? `:${error.colno}` : ''}` : ''}
+时间: ${formatDate(error.timestamp)}
+URL: ${error.url || ''}`;
+
+      await navigator.clipboard.writeText(errorText);
+      
+      // 临时显示复制成功提示
+      const copyBtn = document.querySelector(`[data-error-id="${errorId}"].quick-copy-btn`);
+      if (copyBtn) {
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = '✅ 已复制';
+        copyBtn.style.background = '#10b981';
+        copyBtn.style.color = 'white';
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.style.background = '';
+          copyBtn.style.color = '';
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('一键复制失败:', error);
+    }
+  }
+
+  // AI分析错误
+  async function analyzeErrorWithAI(errorId) {
+    try {
+      const error = errorCache.find(e => e.id === errorId);
+      if (!error) {
+        return;
+      }
+
+      // 找到对应的错误项和分析容器
+      const errorItem = document.querySelector(`[data-error-id="${errorId}"]`);
+      if (!errorItem) return;
+
+      const analysisContainer = errorItem.querySelector('.ai-analysis-container');
+      const analysisContent = errorItem.querySelector('.analysis-content');
+      const analyzeBtn = errorItem.querySelector('.ai-analyze-btn');
+      const analysisBadge = errorItem.querySelector('.analysis-header .badge');
+
+      if (!analysisContainer || !analysisContent || !analyzeBtn) return;
+
+      // 检查是否已有缓存的分析结果
+      if (error.aiAnalysis) {
+        analysisContent.innerHTML = escapeHtml(error.aiAnalysis);
+        analysisContainer.style.display = 'block';
+        analyzeBtn.innerHTML = '🤖 已分析';
+        if (analysisBadge) {
+          analysisBadge.textContent = '已缓存';
+        }
+        return;
+      }
+
+      // 显示加载状态
+      analyzeBtn.disabled = true;
+      analyzeBtn.innerHTML = '🔄 分析中...';
+      analysisContent.innerHTML = '正在分析错误，请稍候...';
+      analysisContainer.style.display = 'block';
+
+      const response = await chrome.runtime.sendMessage({
+        action: 'analyzeError',
+        error: error
+      });
+
+      if (response?.success) {
+        // 缓存分析结果
+        error.aiAnalysis = response.data;
+        
+        // 更新本地缓存
+        const errorIndex = errorCache.findIndex(e => e.id === errorId);
+        if (errorIndex !== -1) {
+          errorCache[errorIndex].aiAnalysis = response.data;
+        }
+
+        // 保存到持久存储
+        await chrome.runtime.sendMessage({
+          action: 'updateErrorAnalysis',
+          errorId: errorId,
+          analysis: response.data
+        });
+
+        // 显示分析结果
+        analysisContent.innerHTML = escapeHtml(response.data);
+        analyzeBtn.innerHTML = '✅ 分析完成';
+        analyzeBtn.disabled = false;
+        if (analysisBadge) {
+          analysisBadge.textContent = '已缓存';
+        }
+        
+        // 3秒后恢复按钮状态
+        setTimeout(() => {
+          analyzeBtn.innerHTML = '🤖 已分析';
+        }, 3000);
+      } else {
+        analysisContent.innerHTML = `❌ 分析失败: ${response?.error || '未知错误'}`;
+        analyzeBtn.innerHTML = '🤖 AI 分析';
+        analyzeBtn.disabled = false;
+      }
+    } catch (error) {
+      const errorItem = document.querySelector(`[data-error-id="${errorId}"]`);
+      if (errorItem) {
+        const analysisContent = errorItem.querySelector('.analysis-content');
+        const analyzeBtn = errorItem.querySelector('.ai-analyze-btn');
+        if (analysisContent) {
+          analysisContent.innerHTML = `❌ 分析失败: ${error.message}`;
+        }
+        if (analyzeBtn) {
+          analyzeBtn.innerHTML = '🤖 AI 分析';
+          analyzeBtn.disabled = false;
+        }
+      }
+    }
+  }
+
+  // 复制错误信息到剪贴板
+  async function copyErrorToClipboard(errorId) {
+    try {
+      const error = errorCache.find(e => e.id === errorId);
+      if (!error) return;
+
+      const errorText = `错误类型: ${error.type}
+错误信息: ${error.message}
+${error.filename ? `文件位置: ${error.filename}${error.lineno ? `:${error.lineno}` : ''}${error.colno ? `:${error.colno}` : ''}` : ''}
+时间: ${formatDate(error.timestamp)}
+URL: ${error.url || ''}
+${error.stack ? `\n堆栈跟踪:\n${error.stack}` : ''}`;
+
+      await navigator.clipboard.writeText(errorText);
+      
+      // 临时显示复制成功提示
+      const copyBtn = document.querySelector(`[data-error-id="${errorId}"].copy-error-btn`);
+      if (copyBtn) {
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = '已复制';
+        copyBtn.style.background = '#10b981';
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.style.background = '';
+        }, 1500);
+      }
+    } catch (error) {
+      showError(elements.errorResults, '复制失败: ' + error.message);
+    }
+  }
+
+  // 复制AI分析结果
+  async function copyAnalysisResult(errorId) {
+    try {
+      const error = errorCache.find(e => e.id === errorId);
+      if (!error) return;
+
+      const errorItem = document.querySelector(`[data-error-id="${errorId}"]`);
+      const analysisContent = errorItem?.querySelector('.analysis-content');
+      const copyBtn = errorItem?.querySelector('.copy-analysis-btn');
+      
+      if (!analysisContent || !copyBtn) return;
+
+      const analysisText = analysisContent.textContent || '';
+      if (!analysisText || analysisText.includes('正在分析') || analysisText.includes('分析失败')) {
+        return;
+      }
+
+      const fullText = `错误信息: ${error.message}
+AI分析结果:
+${analysisText}`;
+
+      await navigator.clipboard.writeText(fullText);
+      
+      // 临时显示复制成功提示
+      const originalText = copyBtn.textContent;
+      copyBtn.textContent = '✅ 已复制';
+      copyBtn.style.background = '#10b981';
+      setTimeout(() => {
+        copyBtn.textContent = originalText;
+        copyBtn.style.background = '';
+      }, 2000);
+    } catch (error) {
+      console.error('复制分析结果失败:', error);
+    }
+  }
+
+  // 复制AI分析结果 (旧版本兼容)
+  window.copyErrorAnalysis = async function(errorId) {
+    await copyAnalysisResult(errorId);
   }
 
   // 配置功能
